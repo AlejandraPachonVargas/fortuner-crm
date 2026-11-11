@@ -1,0 +1,152 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* ---------------------------------------------------------------------------
+   Design tokens FORTUNER BI. Tema claro y oscuro definidos por rol (no por color),
+   validados para daltonismo (ver README.md, sección 17). Las gráficas leen estos mismos
+   valores desde src/charts/theme.ts.
+--------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --page: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-hover: #f0f2f5;
+  --ink: #0f1419;
+  --ink-2: #4a5160;
+  --ink-3: #8a909c;
+  --line: #e4e6ea;
+  --line-strong: #cfd3da;
+  --brand: #1c5cab;
+  --brand-soft: #e8f1fc;
+  --good: #0a7d36;
+  --good-soft: #e5f5ea;
+  --bad: #c42b2b;
+  --bad-soft: #fcebeb;
+  --warn: #a86400;
+  --warn-soft: #fff4dc;
+  --info: #256abf;
+  --info-soft: #e8f1fc;
+  --shadow: 0 1px 2px rgba(15, 20, 25, 0.04), 0 1px 3px rgba(15, 20, 25, 0.06);
+  --radius: 12px;
+  /* Marca corporativa DSI y cabecera del asistente (iguales en ambos temas) */
+  --accent: #00aeef;
+  --accent-hover: #0aa0dc;
+  --navy: #0b1d36;
+  --navy-2: #14406f;
+  --navy-ink: #b9c8dc;
+  --code-bg: #0d1b2e;
+  --code-ink: #cfe1fb;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0f12;
+  --surface: #16191e;
+  --surface-2: #1c2026;
+  --surface-hover: #22272e;
+  --ink: #eef0f3;
+  --ink-2: #b6bcc7;
+  --ink-3: #7d8491;
+  --line: #2a2f37;
+  --line-strong: #3a414b;
+  --brand: #3987e5;
+  --brand-soft: #142740;
+  --good: #34c76a;
+  --good-soft: #10291a;
+  --bad: #f06a6a;
+  --bad-soft: #351616;
+  --warn: #f0b23a;
+  --warn-soft: #33270e;
+  --info: #6da7ec;
+  --info-soft: #142740;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-navy: var(--navy);
+  --color-navy-2: var(--navy-2);
+  --color-navy-ink: var(--navy-ink);
+  --color-code: var(--code-bg);
+  --color-code-ink: var(--code-ink);
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+
+.is-fetching { opacity: 0.55; transition: opacity 0.2s; }
+
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; background: var(--surface-2); border-radius: 8px; }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  animation: shimmer 1.4s infinite;
+}
+:root[data-theme="dark"] .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); }
+
+@media print {
+  aside, .no-print { display: none !important; }
+  .card { break-inside: avoid; box-shadow: none; }
+}
+
+/* Fila de tarjetas KPI: tantas columnas como quepan con al menos 170px cada una. Con la barra
+   lateral abierta o en pantallas angostas pasan a la siguiente fila en vez de encoger la cifra. */
+@utility kpi-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+}
+
+/* Foco visible para teclado y respeto a quien pide menos movimiento */
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

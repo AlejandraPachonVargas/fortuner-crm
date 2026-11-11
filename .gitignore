@@ -1,0 +1,30 @@
+# Entornos
+.venv/
+venv/
+node_modules/
+
+# Secretos (NUNCA se versionan)
+.env
+.env.*
+!.env.example
+
+# Datos locales (warehouse, staging, base de campañas)
+data/
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Compilados / caché
+frontend/dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+*.tsbuildinfo
+
+# Editores
+.vscode/
+.idea/
