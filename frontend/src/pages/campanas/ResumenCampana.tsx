@@ -1,6 +1,8 @@
-import { Mail, MessageCircle, MessageSquareText, Package, Target, Wallet } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Package, Target, Wallet } from 'lucide-react'
 import { Badge, Card, Notice, Stat } from '@/components/ui'
 import type { Mensaje, Preview, Producto } from '@/lib/api'
+import VistaCanales from '@/components/VistaCanales'
+import { revisarCalidad, puntajeCalidad } from '@/lib/calidad'
 import { CANAL_LABEL, fmtCop, fmtNum } from '@/lib/format'
 
 export interface DatosCampana {
@@ -43,7 +45,7 @@ export function pendientes(d: DatosCampana): string[] {
   return p
 }
 
-export default function ResumenCampana({ d }: { d: DatosCampana }) {
+export default function ResumenCampana({ d, calidad = true }: { d: DatosCampana; calidad?: boolean }) {
   const m = d.mensaje
   const canales = m.canales ?? []
   const activos = filtrosActivos(d.filtros)
@@ -95,27 +97,36 @@ export default function ResumenCampana({ d }: { d: DatosCampana }) {
         </Card>
       </div>
 
-      <Card title="2 · Mensajes por canal" actions={<Wallet size={16} className="text-ink-3" />}>
-        {canales.length === 0 ? <p className="text-[13px] text-ink-3">Sin canales seleccionados.</p> : (
-          <div className="grid gap-4 lg:grid-cols-3">
-            {canales.includes('whatsapp') && (
-              <div><div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-ink-2"><MessageCircle size={14} />WhatsApp</div>
-                <div className="rounded-xl bg-[#e7f5ec] p-3 dark:bg-[#10291a]"><div className="rounded-xl rounded-tl-sm bg-white px-3 py-2 text-[12.5px] leading-snug whitespace-pre-wrap text-[#111b21] shadow-sm dark:bg-[#1f2c34] dark:text-[#e9edef]">{m.textos?.whatsapp?.texto || <i className="text-ink-3">Sin texto</i>}</div></div></div>
-            )}
-            {canales.includes('sms') && (
-              <div><div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-ink-2"><MessageSquareText size={14} />SMS</div>
-                <div className="rounded-2xl rounded-bl-sm bg-surface-2 px-3 py-2 text-[12.5px] leading-snug whitespace-pre-wrap text-ink">{m.textos?.sms?.texto || <i className="text-ink-3">Sin texto</i>}</div></div>
-            )}
-            {canales.includes('email') && (
-              <div><div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-ink-2"><Mail size={14} />Correo</div>
-                <div className="rounded-xl border border-line bg-surface-2 p-3"><div className="text-[12.5px] font-bold text-ink">{m.textos?.email?.asunto || <i className="font-normal text-ink-3">Sin asunto</i>}</div>
-                  <div className="mt-2 text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">{m.textos?.email?.cuerpo || <i className="text-ink-3">Sin cuerpo</i>}</div></div></div>
-            )}
-          </div>
-        )}
-        {(m.tokens ?? 0) > 0 && <p className="mt-3 text-[11.5px] text-ink-3">Redactado con IA · {fmtNum(m.tokens)} tokens consumidos.</p>}
-        {m.modo === 'manual' && <p className="mt-3 text-[11.5px] text-ink-3">Redacción propia (sin IA, sin tokens).</p>}
-      </Card>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <Card title="2 · Así lo verá el cliente" actions={<Wallet size={16} className="text-ink-3" />}>
+          <VistaCanales mensaje={m} productos={d.productos} />
+          {(m.tokens ?? 0) > 0 && <p className="mt-3 text-[11.5px] text-ink-3">Redactado con IA · {fmtNum(m.tokens)} tokens consumidos.</p>}
+          {m.modo === 'manual' && <p className="mt-3 text-[11.5px] text-ink-3">Redacción propia (sin IA, sin tokens).</p>}
+        </Card>
+        {calidad && <CalidadMensaje m={m} productos={d.productos} restringido={Boolean(d.preview?.restricciones.excluye_menores)} />}
+      </div>
     </div>
+  )
+}
+
+/** Lista de verificación de calidad y cumplimiento del mensaje (recomendaciones; no bloquea la publicación). */
+function CalidadMensaje({ m, productos, restringido }: { m: Partial<Mensaje>; productos: Producto[]; restringido: boolean }) {
+  const chequeos = revisarCalidad(m, productos, restringido)
+  const pct = puntajeCalidad(chequeos)
+  const tono = pct >= 85 ? 'text-good' : pct >= 60 ? 'text-warn' : 'text-bad'
+  return (
+    <Card title="Calidad del mensaje" subtitle="Buenas prácticas de marketing y cumplimiento"
+      actions={chequeos.length ? <span className={`text-[18px] font-extrabold tnum ${tono}`}>{pct}<span className="text-[11px] font-semibold text-ink-3">/100</span></span> : undefined}>
+      {chequeos.length === 0 ? <p className="text-[13px] text-ink-3">Redacte el mensaje para ver la revisión.</p> : (
+        <ul className="space-y-2">
+          {chequeos.map((c) => (
+            <li key={c.texto} className="flex items-start gap-2 text-[12.5px]">
+              {c.ok ? <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-good" /> : <CircleAlert size={15} className="mt-0.5 shrink-0 text-warn" />}
+              <span className="min-w-0"><span className={c.ok ? 'text-ink-2' : 'font-semibold text-ink'}>{c.texto}</span>{!c.ok && c.ayuda && <span className="block text-[11.5px] text-ink-3">{c.ayuda}</span>}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }

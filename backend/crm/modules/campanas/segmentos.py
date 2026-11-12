@@ -349,6 +349,16 @@ def _motivos(d: dict) -> list[str]:
     return m[:4]
 
 
+def momento_de_compra(dias: Counter, franjas: Counter) -> dict:
+    """Cuándo suele comprar la audiencia (día ISO 1=lunes y franja): base para sugerir el día y la hora de envío."""
+    return {
+        "dias": [{"id": d, "n": dias.get(d, 0)} for d in range(1, 8)],
+        "franjas": [{"id": k, "n": franjas.get(k, 0)} for k in ("mañana", "tarde", "noche")],
+        "mejor_dia": dias.most_common(1)[0][0] if dias else None,
+        "mejor_franja": franjas.most_common(1)[0][0] if franjas else None,
+    }
+
+
 def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dict:
     """Agregados de la audiencia: alcance por canal, costos, composición y curva de concentración."""
     canales = f["canales"]
@@ -360,9 +370,15 @@ def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dic
 
     por_canal = Counter()
     seg, sexo, edad, ciclo, ciud = Counter(), Counter(), Counter(), Counter(), Counter()
+    dias, franjas = Counter(), Counter()
     costo = 0.0
     puntajes = []
+    i_dia, i_fr = ci.get("dia_semana_pref"), ci.get("franja_pref")
     for r in sel:
+        if i_dia is not None and r[i_dia]:
+            dias[int(r[i_dia])] += 1
+        if i_fr is not None and r[i_fr]:
+            franjas[r[i_fr]] += 1
         cel, mail = r[ci["celular"]], r[ci["email_valido"]]
         chs = (["whatsapp", "sms"] if cel else []) + (["email"] if mail else [])
         chs = [c for c in chs if c in canales]
@@ -404,6 +420,7 @@ def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dic
         "edades": [{"id": k, "n": edad.get(k, 0)} for k in BANDAS_EDAD if edad.get(k)],
         "ciclo": [{"id": k, "nombre": CICLOS.get(k, k), "n": v} for k, v in ciclo.most_common()],
         "ciudades": [{"id": k, "n": v} for k, v in ciud.most_common(8)],
+        "momento": momento_de_compra(dias, franjas),
         "curva": curva,
         "corte_recomendado": ({"contactos": corte["contactos"], "pct_audiencia": corte["pct_audiencia"],
                                "pct_potencial": corte["pct_potencial"], "puntaje_minimo": corte["puntaje_corte"]} if corte else None),

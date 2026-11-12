@@ -123,7 +123,9 @@ export function SearchInput({ value, onChange, placeholder }: { value: string; o
 /** Casilla de verificación con estilo de «chip»: se usa en las listas de segmentación (check list). */
 export function Chip({ checked, onChange, children, disabled, title }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode; disabled?: boolean; title?: string }) {
   return (
-    <label title={title} className={clsx('inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition select-none',
+    // «relative»: el input oculto (sr-only = position:absolute) debe anclarse a su chip; sin esto quedaba fuera del panel con
+    // scroll y al enfocarlo el navegador desplazaba toda la página.
+    <label title={title} className={clsx('relative inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition select-none focus-within:ring-2 focus-within:ring-brand/40',
       checked ? 'border-brand bg-brand-soft text-brand' : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-hover', disabled && 'cursor-not-allowed opacity-50')}>
       <input type="checkbox" className="sr-only" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span className={clsx('grid h-3.5 w-3.5 place-items-center rounded-[4px] border', checked ? 'border-brand bg-brand text-white' : 'border-line-strong')}>{checked && <Check size={10} strokeWidth={3.5} />}</span>

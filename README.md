@@ -42,6 +42,8 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 | Campañas · 3 Mensaje (IA o redacción propia, 3 canales) | ✅ Listo | Modo manual **no consume tokens** |
 | Campañas · 4 Audiencia (segmentación + IA + presupuesto) | ✅ Listo | RFM, ciclo de recompra, afinidad, estacionalidad, hábitos, consentimiento |
 | Campañas · 5 Revisión y publicación | ✅ Listo (**simulada**) | No envía mensajes reales; ver [§13](#13-difusión-real-siguiente-fase-recomendaciones) |
+| Campañas · vista previa realista (WhatsApp, SMS, correo) | ✅ Listo | Pasos 2 y 4; ver [§9](#9-módulo-campañas-las-5-pantallas) |
+| Campañas · programar publicación + grupo de control + calidad del mensaje | ✅ Listo (**simulada**) | Planificador interno cada 30 s; estado *programada* en el historial |
 | Difusión real (WhatsApp / SMS / correo) | ⏳ Pendiente | Solo recomendaciones por ahora |
 | Medición de resultados / modelo supervisado | ⏳ Pendiente | Requiere difusión real para tener respuestas |
 | Clientes 360°, automatizaciones | ⏳ Pendiente | Aparecen en el menú como «Próximamente» |
@@ -237,25 +239,31 @@ Construido por [`model.sql`](backend/crm/etl/sql/model.sql) en DuckDB:
 
 Ruta: `/campanas`. Estilo visual idéntico a *fortuner-dashboards* (menú azul marino, tarjetas, tipografía Inter, tema claro/oscuro).
 
-1. **Historial** (`/campanas`): todas las campañas con estado (*Borrador paso N de 4* / *Publicada*), filtros por estado y búsqueda, y por fila **Ver · Editar · Eliminar**
-   (en las publicadas, *Duplicar como borrador*). Los borradores se guardan solos al avanzar de paso.
+1. **Historial** (`/campanas`): todas las campañas con estado (*Borrador paso N de 4* / ***Programada · vie 14 nov · 4:30 p. m.*** / *Publicada*), tarjeta con la próxima
+   programada, filtros por estado y búsqueda, y por fila **Ver · Editar · Eliminar** (en las publicadas, *Duplicar como borrador*; en las programadas, *Cancelar programación*).
+   Los borradores se guardan solos al avanzar de paso.
 2. **Productos** (paso 1): tres pestañas
    - **Sugeridos por temporada (IA)**: calendario comercial (Feria de Manizales, Amor y Amistad, Halloween, Black Friday, Novenas, Navidad…) +
      inventario real → la IA elige y **explica la causa** de cada producto y propone combos.
    - **Por inventario y rotación**: sobrestock, baja rotación y productos sin ventas, con **causa, capital inmovilizado y descuento máximo referencial** (sin vender bajo costo). No usa IA.
    - **Búsqueda manual**: nombre / código de barras / ID + familia, departamento, grupo, sección, tipo y marca (encadenados por jerarquía), solo con stock, con ventas, días sin vender, orden.
 3. **Mensaje** (paso 2): *Redactar con IA* (prompt + tono → 3 versiones) o *Mi redacción es la final* (**sin tokens**). Check-list de canales (WhatsApp, SMS, correo), vistas previas
-   realistas, contador de caracteres y **cuántos SMS se cobrarían** (GSM-7 vs Unicode). Marcador `{nombre}` para personalizar.
+   contador de caracteres y **cuántos SMS se cobrarían** (GSM-7 vs Unicode). Marcador `{nombre}` para personalizar. A la derecha, **«Así lo verá el cliente»**: un teléfono con
+   **WhatsApp** (burbuja, hora, *negrita*/_cursiva_), un teléfono con la **app de mensajes (SMS)** y un **cliente de correo** (fila de la bandeja con asunto y vista previa +
+   correo abierto con banner, párrafos, tarjetas de los productos con precio, botón y pie de baja). Se actualiza mientras se escribe y permite cambiar el nombre de ejemplo.
 4. **Audiencia** (paso 3): recomendación de la IA + segmentadores en check-list (ver [§11](#11-segmentación-de-clientes)), presupuesto (tope de personas y costo por mensaje),
    resultado en vivo (alcance por canal, costo, curva de concentración, composición, los 25 mejores candidatos **enmascarados** con el porqué de cada uno).
-5. **Revisar y publicar** (paso 4): resumen de productos, mensajes por canal, audiencia y costo; lista de pendientes; confirmación. La publicación es **simulada**.
+   **Estrategias listas** (un clic): *Recompra a tiempo*, *Reactivar dormidos*, *Premiar a los mejores*, *Rotar inventario*, *Segunda compra*.
+5. **Revisar y publicar** (paso 4): resumen de productos, vista previa realista, audiencia y costo; **calidad del mensaje** (lista de verificación con puntaje); lista de
+   pendientes; **Cuándo publicar** (ahora o **programar día y hora**, con horario sugerido y grupo de control); confirmación. La publicación es **simulada**.
 
 ### API (prefijo `/api/campanas`, requiere clave)
 
 | Método y ruta | Función |
 |---|---|
 | `GET /` · `POST /` · `GET/PUT/DELETE /{id}` · `POST /{id}/duplicar` | CRUD de campañas |
-| `POST /{id}/publicar` | Publicación simulada (recalcula la audiencia en el servidor) |
+| `POST /{id}/publicar` | Publicación simulada **ahora o programada**. Cuerpo opcional: `{"programar_para": "2026-11-14T16:30", "control_pct": 10}`. Recalcula la audiencia en el servidor |
+| `POST /{id}/cancelar-programacion` | La campaña programada vuelve a borrador (editable) y libera a sus destinatarios |
 | `GET /temporadas` | Temporadas próximas (determinista) |
 | `GET /productos/filtros` · `POST /productos/buscar` · `POST /productos/por-ids` | Catálogo con filtros |
 | `POST /productos/recomendar-inventario` | Exceso de inventario / sin rotación |
@@ -264,6 +272,24 @@ Ruta: `/campanas`. Estilo visual idéntico a *fortuner-dashboards* (menú azul m
 | `GET /segmentacion/opciones` · `POST /segmentacion/previsualizar` | Audiencia en vivo |
 | `POST /ia/segmentacion/recomendar` | Perfil de comprador ideal (IA + datos) — **usa tokens** |
 | `GET /api/sistema/estado` · `POST /api/sistema/etl` (admin) · `GET /api/salud` | Operación |
+
+### Programación, grupo de control y calidad (iteración 2)
+
+- **Estados**: `borrador → programada → publicada`. Una campaña *programada* no se edita (hay que cancelar la programación); sus destinatarios quedan **reservados**
+  (cuentan para la regla «no contactar a quien recibió otra campaña en los últimos N días»), de modo que dos campañas programadas no se pisan.
+- **Hora**: se interpreta en la **hora del servidor** (en el servidor Windows de Colombia = hora local), se guarda sin zona (`2026-11-14T16:30:00`); debe estar entre 2 minutos y 1 año
+  en el futuro. Un **planificador** dentro de la API (`_planificador` en `api.py`) revisa cada 30 s y, al llegar la hora, publica la campaña (simulado) y deja constancia en `auditoria`.
+  Al arrancar también publica las que vencieron mientras el servidor estaba apagado. *No* requiere tareas programadas adicionales de Windows; solo que el servicio esté en marcha.
+- **Horario sugerido**: se calcula con el día de la semana y la franja (mañana/tarde/noche) en que más compra la audiencia elegida (`resumen.momento`) y propone enviar **poco antes**
+  (8:30 / 12:30 / 16:30). En fin de semana limita la hora a las 12:00. El gráfico de barras muestra qué día compra la audiencia.
+- **Aviso de horario (no bloquea)**: el **SMS comercial** debería enviarse L–V 7:00–19:00 y sáb., dom. y festivos 8:00–15:00 (Resolución CRC 5111 de 2017; **confirmar con asesor jurídico**: los festivos
+  no están en el calendario del sistema). Cualquier canal avisa si se programa de madrugada/noche.
+- **Grupo de control (0–20 %)**: reserva al azar una parte de la audiencia **sin enviarle nada**. La selección es determinista (`SHA-256(campaña:cliente) mod 100 < %`), independiente del puntaje,
+  y queda guardada (`destinatario.grupo = 'control'`). Sirve para medir **ventas incrementales** (ver Roadmap). El costo se calcula solo sobre quienes sí reciben el mensaje, y los del control **no** cuentan
+  como «contactados» para la regla anti-saturación.
+- **Calidad del mensaje** (`frontend/src/lib/calidad.ts`): opción de baja, SMS en un solo mensaje, asunto ≤ 60 caracteres, texto de vista previa, asunto sin mayúsculas sostenidas, uso de `{nombre}`,
+  oferta concreta y, si hay licor/tabaco, leyenda sanitaria («El exceso de alcohol es perjudicial para la salud», Ley 30 de 1986; **confirmar con asesor jurídico**). Son recomendaciones: no bloquean.
+- **Migración automática**: la base SQLite existente se actualiza sola al arrancar (el `CHECK` del estado se reconstruye de forma atómica conservando todas las campañas; prueba incluida).
 
 ---
 
@@ -386,12 +412,14 @@ Hoy «Publicar» **no envía nada**. Para pasar a envío real, la propuesta (sin
 ## 14. Pruebas
 
 ```powershell
-cd backend ; ..\.venv\Scripts\python -m pytest -q        # 33 pruebas
-cd frontend ; npm test ; npm run build                  # 7 pruebas + tsc (tipos estrictos) + build
+cd backend ; ..\.venv\Scripts\python -m pytest -q        # 50 pruebas
+cd frontend ; npm test ; npm run build                  # 17 pruebas + tsc (tipos estrictos) + build
 ```
 
 Cubren: calendario y fechas móviles, conteo de SMS (GSM-7/Unicode), normalización y saneamiento de filtros, ausencia de interpolación SQL, exclusión de menores,
 enmascarado de datos, cálculo de costos sin doble cobro, tope por presupuesto, CRUD/borrado lógico/exclusión de recientes, autenticación, rol admin, cabeceras, validación de entradas y límite de tasa.
+Iteración 2: validación de fechas programadas, planificador (solo publica las vencidas y es idempotente), cancelar programación, reserva de destinatarios, grupo de control determinista (≈ porcentaje pedido),
+migración de una base antigua sin perder datos, momento de compra, horario de SMS y lista de calidad del mensaje.
 
 ---
 
@@ -439,11 +467,36 @@ enmascarado de datos, cálculo de costos sin doble cobro, tope por presupuesto, 
 
 1. **Cargar años anteriores del ERP** → activar estacionalidad histórica real.
 2. **Difusión real** (ver §13) + registro de respuestas.
-3. **Medición**: conversión por campaña, ventas incrementales con grupo de control, ROI por canal.
+3. **Medición**: conversión por campaña, ventas incrementales con grupo de control (*el grupo de control ya se reserva al publicar; falta el tablero que lo compara*), ROI por canal.
 4. **Segmentación supervisada**: con respuestas reales, reemplazar el puntaje heurístico por **regresión logística / gradient boosting** calibrado;
    modelos de **valor de vida (BG/NBD + Gamma-Gamma)**, **probabilidad de abandono** y **uplift** (a quién la campaña *cambia* la decisión, no solo quién compraría igual).
 5. **Combos/canasta**: reglas de asociación (qué se compra junto) para proponer paquetes.
 6. Usuarios, roles y permisos; automatizaciones (cumpleaños, reactivación, post-compra); Clientes 360°.
+
+### Análisis de marketing y propuestas priorizadas
+
+Visión de publicista/estratega para un retail de barrio-supermercado con ~72 mil clientes identificados. Principios: **(1)** cada mensaje debe tener una razón concreta para actuar
+(producto + precio + límite en el tiempo), **(2)** el mejor mensaje es el que llega al cliente correcto en su ritmo de compra, **(3)** lo que no se mide no mejora, **(4)** el
+cliente no es un recurso ilimitado: la saturación destruye la base.
+
+**Ya incluido en la iteración 2:** estrategias listas, vista previa realista, programación con horario sugerido, grupo de control, lista de calidad/cumplimiento y duplicar campañas.
+
+| # | Propuesta | Por qué vendería más | Esfuerzo | Depende de |
+|---|---|---|---|---|
+| 1 | **Tablero de resultados con ventas incrementales**: compras de los destinatarios vs. el grupo de control en los 7–14 días siguientes (ya tenemos `FADITE` por cliente) → conversión, venta incremental, ROI y costo por venta incremental | Cierra el ciclo: dice qué campañas valen la pena y cuáles regalan margen. Sin esto, todo lo demás es intuición | Medio | Grupo de control (hecho) y ETL diario |
+| 2 | **Pruebas A/B**: dos versiones (asunto, gancho u oferta) a 10 % + 10 % y el ganador al resto; la IA genera las variantes | El asunto/gancho puede mover la apertura 20–40 %; aprende qué funciona con *su* público | Medio | #1 |
+| 3 | **Capacidad de stock y estimador de resultado**: antes de publicar, comparar la demanda esperada (audiencia × conversión supuesta) con el inventario, y mostrar un rango conservador/esperado/optimista | Evita el peor error de una promoción: agotar el producto o dejar inventario sin mover | Bajo | Stock (ya está), tasas editables |
+| 4 | **Recorridos automáticos (journeys)**: *segunda compra* (7 días tras la primera), *reactivación* (cuando se pasa su ciclo propio), *post-compra con venta cruzada* y **cumpleaños** | Es el marketing de mayor ROI en retail: ocurre en el momento justo, sin esfuerzo humano | Alto | Difusión real, #1 |
+| 5 | **Captura de consentimiento y de contacto**: ~la mitad de la base no es contactable (`INFOLEY` vacío) y solo ~35 % tiene celular válido; guion en caja + enlace de doble confirmación por correo + sorteo/beneficio | Duplica el alcance sin gastar un peso en pauta; reduce el riesgo legal | Bajo | Proceso en tienda |
+| 6 | **Personalización por producto favorito** (`{producto_favorito}`, `{ultima_compra}`): «Tu pechuga de siempre está a $13.900» en vez de un mensaje igual para todos | Pasa de segmentación por grupos a *una oferta por persona*; sube conversión y reduce bajas | Medio | `cli_producto` (ya está) |
+| 7 | **Ofertas escalonadas por segmento**: VIP = beneficio/acceso anticipado (sin descuento), sensibles a precio = descuento, dormidos = incentivo mayor; con tope de margen | No regalar descuento a quien compraría igual (el *gasto en descuento* es el mayor costo oculto) | Medio | Margen por producto (ya está) |
+| 8 | **Cascada de canales**: correo primero (barato); a quienes no lo abrieron en 24 h, WhatsApp/SMS solo si el cliente es de valor | Baja el costo por cliente alcanzado sin perder cobertura | Medio | Difusión real |
+| 9 | **Calendario de campañas**: vista mensual con temporadas, campañas programadas y alerta de choques/saturación (máx. N mensajes por cliente por semana) | Planificación visual; evita que dos áreas hablen al mismo cliente el mismo día | Medio | Programación (hecha) |
+| 10 | **Audiencias guardadas** («Mis audiencias») y **biblioteca de mensajes ganadores** con voz de marca para la IA | Ahorra tiempo y mantiene coherencia de marca | Bajo | — |
+| 11 | **Códigos/QR canjeables en caja** por campaña (o por cliente) | Atribución exacta de ventas y sensación de exclusividad | Medio | Integración con caja |
+| 12 | **Modelo supervisado y de *uplift*** (a quién la campaña *cambia* la decisión) | Concentra el presupuesto en quienes realmente responden por el mensaje | Alto | Respuestas reales (#1) |
+
+**Orden recomendado:** 3 → 1 → 5 → 2 → 6 → 4. (3 y 5 son rápidos y de gran impacto; 1 habilita medir todo lo que sigue; 2, 6 y 4 se apoyan en esa medición.)
 
 ---
 
@@ -454,3 +507,4 @@ enmascarado de datos, cálculo de costos sin doble cobro, tope por presupuesto, 
 | 2026-11-11 | **Inicio del proyecto.** Conexión a ADVANTAGE/Publidata (solo lectura) validada: 146.371 clientes, 51.938 filas de saldos de producto, ~24 M de líneas de venta (2026). Extractor propio, modelo DuckDB, API FastAPI, almacén SQLite. |
 | 2026-11-11 | **Auditoría de extremo a extremo.** Error encontrado y corregido: al publicar, el servidor leía mal los filtros guardados (`segmentacion.filtros`) y publicó a toda la base en vez de respetar tope de personas, objetivo y exclusión de contactados recientes. Ahora `filtros_de_campana()` reconstruye exactamente lo previsualizado (con prueba de regresión) y se verificó que dos campañas seguidas **no se solapan** (0 destinatarios repetidos). Además: CSP sin scripts en línea; productos sin precio ($0 en el ERP) se avisan y no se le dan a la IA; curva de concentración con potencial ∝ puntaje³. |
 | 2026-11-11 | **Módulo Campañas (victoria temprana #1):** historial, selección de productos (IA por temporada + inventario + filtros), redacción por canal (IA o manual), segmentación multi-técnica con IA, revisión y publicación simulada. 31 pruebas automáticas. Scripts de instalación/servicio para Windows. |
+| 2026-11-12 | **Iteración 2.** *Corrección:* al marcar filtros del paso Audiencia la pantalla «se salía» (el input oculto de cada casilla, `sr-only`/`position:absolute`, quedaba anclado fuera del panel con scroll y, al enfocarlo, el navegador desplazaba la página entera). Ahora cada casilla es `relative`, `html/body` usan `overflow: clip` y el panel de resultados tiene su propio scroll. *Nuevo:* vista previa realista (WhatsApp, SMS, correo); programación de publicaciones con planificador, horario sugerido y avisos de horario; grupo de control; estado *programada* en el historial (con migración automática de la base); lista de calidad/cumplimiento; estrategias de audiencia listas; análisis de marketing y propuestas (§16). También se corrigió que, tras publicar un borrador existente, aparecía «no se puede editar» en lugar de la pantalla de confirmación. |

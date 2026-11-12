@@ -13,6 +13,20 @@ interface Recomendacion {
   perfil: { n: number; cohorte: string }
 }
 
+/** Configuraciones típicas de marketing de retail (los ids son los de /segmentacion/opciones). */
+const ESTRATEGIAS: { id: string; icono: string; titulo: string; desc: string; filtros: FiltrosSeg }[] = [
+  { id: 'recompra', icono: '🔁', titulo: 'Recompra a tiempo', desc: 'Clientes en su ventana de recompra que ya compran esta categoría.',
+    filtros: { objetivo: 'equilibrado', ciclo: ['en_ventana', 'atrasado'], afinidad_requerida: ['producto', 'grupo'] } },
+  { id: 'reactivar', icono: '💤', titulo: 'Reactivar dormidos', desc: 'Buenos clientes que dejaron de venir: en riesgo, hibernando o que no se pueden perder.',
+    filtros: { objetivo: 'reactivar', segmentos_rfm: ['no_perder', 'en_riesgo', 'hibernando'], afinidad_requerida: ['producto', 'grupo', 'familia'] } },
+  { id: 'vip', icono: '👑', titulo: 'Premiar a los mejores', desc: 'Campeones y leales de valor alto: trato preferente, sin descuento agresivo.',
+    filtros: { objetivo: 'premium', segmentos_rfm: ['campeones', 'leales'], valor: ['alto'] } },
+  { id: 'rotar', icono: '📦', titulo: 'Rotar inventario', desc: 'Quienes responden a descuentos y compran en esta familia o grupo.',
+    filtros: { objetivo: 'rotar_inventario', descuento: ['alta', 'media'], afinidad_requerida: ['producto', 'grupo', 'familia'] } },
+  { id: 'segunda', icono: '🌱', titulo: 'Segunda compra', desc: 'Clientes nuevos y prometedores: convertir la primera visita en hábito.',
+    filtros: { objetivo: 'equilibrado', segmentos_rfm: ['nuevos', 'prometedores'], afinidad_requerida: ['producto', 'grupo', 'familia'] } },
+]
+
 const arr = <T,>(f: FiltrosSeg, k: string): T[] => (Array.isArray(f[k]) ? (f[k] as T[]) : [])
 const MAPA_EDAD: Record<string, string> = { '18-24': '18–24', '25-34': '25–34', '35-44': '35–44', '45-54': '45–54', '55-64': '55–64', '65+': '65 o más', sin_dato: 'Sin dato', menor: 'Menor de 18' }
 const NOMBRE_CLAVE: Record<string, string> = {
@@ -109,6 +123,18 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
           )}
         </Card>
 
+        <Card title="Estrategias listas" subtitle="Un clic configura los segmentadores; luego puede afinarlos">
+          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+            {ESTRATEGIAS.map((e) => (
+              <button key={e.id} type="button" onClick={() => onChange({ consentimiento: filtros.consentimiento ?? 'estricto', costos: filtros.costos, tope_contactos: filtros.tope_contactos, excluir_contactados_dias: '15', ...e.filtros })}
+                className="flex items-start gap-2.5 rounded-xl border border-line-strong p-2.5 text-left transition hover:border-brand hover:bg-brand-soft">
+                <span className="mt-0.5 text-[18px] leading-none" aria-hidden>{e.icono}</span>
+                <span className="min-w-0"><span className="block text-[12.5px] font-bold text-ink">{e.titulo}</span><span className="block text-[11.5px] leading-snug text-ink-3">{e.desc}</span></span>
+              </button>
+            ))}
+          </div>
+        </Card>
+
         <Card title="Segmentadores" subtitle={nActivos ? `${nActivos} filtro(s) activo(s)` : 'Sin filtros: se usa todo el que pueda recibir'} actions={nActivos ? <Btn small variant="ghost" onClick={limpiar}>Limpiar</Btn> : undefined}>
           <div className="space-y-5">
             <Grupo titulo="Objetivo de la campaña" ayuda="Cambia cómo se pondera el puntaje">
@@ -188,7 +214,8 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
       </div>
 
       {/* ----------------------------------------------------------------- resultado en vivo */}
-      <div className="min-w-0 space-y-4 xl:sticky xl:top-0 xl:self-start">
+      {/* En pantallas anchas el resultado queda fijo; si es más alto que la pantalla tiene su propio scroll (si no, no se llegaba al final). */}
+      <div className="min-w-0 space-y-4 xl:sticky xl:top-0 xl:max-h-[calc(100vh-10.5rem)] xl:self-start xl:overflow-y-auto xl:pr-1 scroll-thin">
         {prev?.restricciones.excluye_menores && (
           <Notice tone="warn" icon={<ShieldAlert size={15} className="mt-0.5 shrink-0" />}>
             Hay productos de venta restringida ({prev.restricciones.alcohol_o_tabaco.slice(0, 2).join(', ')}…). Se excluyen automáticamente los menores de 18 años y los clientes sin fecha de nacimiento.

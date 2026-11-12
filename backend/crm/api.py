@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 from contextlib import asynccontextmanager
@@ -24,13 +25,29 @@ log = logging.getLogger("crm.api")
 DIST = ROOT_DIR / "frontend" / "dist"
 
 
+async def _planificador(store) -> None:
+    """Cada 30 s publica las campañas programadas cuya hora llegó. Al arrancar también publica las que vencieron mientras
+    el servidor estaba apagado. Nunca debe morir por un error puntual."""
+    while True:
+        try:
+            for cid in store.ejecutar_programadas():
+                log.info("Campaña programada publicada (simulado): %s", cid)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Falló el planificador de campañas")
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
     logging.basicConfig(level=s.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     verificar_configuracion(s)
-    get_store(s)  # crea la base de campañas si no existe
+    store = get_store(s)  # crea (y migra) la base de campañas
+    planificador = asyncio.create_task(_planificador(store))
     yield
+    planificador.cancel()
     await cerrar_http()
     get_warehouse().cerrar()
 

@@ -1,13 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Copy, Eye, FilePen, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CalendarClock, CalendarX2, Copy, Eye, FilePen, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Btn, Card, ConfirmDialog, Empty, ErrorBox, IconBtn, SearchInput, Skeleton, Stat } from '@/components/ui'
 import { api, useGet, type Campana } from '@/lib/api'
 import { CANAL_LABEL, fmtCop, fmtFechaHora, fmtNum } from '@/lib/format'
+import { fmtProgramada } from '@/lib/programacion'
 
-type Filtro = '' | 'borrador' | 'publicada'
+type Filtro = '' | 'borrador' | 'programada' | 'publicada'
 
 export default function Historial() {
   const nav = useNavigate()
@@ -28,6 +29,11 @@ export default function Historial() {
     onSuccess: (c) => { void qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('/campanas') }); nav(`/campanas/${c.id}/editar`) },
   })
 
+  const desprog = useMutation({
+    mutationFn: (id: string) => api<Campana>(`/campanas/${id}/cancelar-programacion`, { method: 'POST' }),
+    onSuccess: () => void qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('/campanas') }),
+  })
+  const programadas = todas.filter((c) => c.estado === 'programada').sort((a, b) => String(a.programada_para).localeCompare(String(b.programada_para)))
   const nPub = todas.filter((c) => c.estado === 'publicada').length
   const nBor = todas.filter((c) => c.estado === 'borrador').length
   const items = data?.items ?? []
@@ -42,8 +48,9 @@ export default function Historial() {
         <Btn variant="accent" icon={<Plus size={16} />} onClick={() => nav('/campanas/nueva')}>Crear campaña</Btn>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="Campañas" value={fmtNum(todas.length)} />
+        <Stat label="Programadas" value={fmtNum(programadas.length)} tone={programadas.length ? 'good' : undefined} sub={programadas[0] ? `Próxima: ${fmtProgramada(programadas[0].programada_para)}` : undefined} />
         <Stat label="Publicadas" value={fmtNum(nPub)} tone="good" />
         <Stat label="Borradores" value={fmtNum(nBor)} tone={nBor ? 'warn' : undefined} sub={nBor ? 'Sin lanzar' : undefined} />
         <Stat label="Inversión estimada" value={fmtCop(todas.filter((c) => c.estado === 'publicada').reduce((a, c) => a + c.costo_estimado, 0))} sub="Solo publicadas" />
@@ -52,7 +59,7 @@ export default function Historial() {
       <Card pad={false}>
         <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
           <div role="tablist" aria-label="Estado" className="flex rounded-lg border border-line-strong p-0.5">
-            {([['', 'Todas'], ['borrador', 'Borradores'], ['publicada', 'Publicadas']] as const).map(([v, l]) => (
+            {([['', 'Todas'], ['borrador', 'Borradores'], ['programada', 'Programadas'], ['publicada', 'Publicadas']] as const).map(([v, l]) => (
               <button key={v} role="tab" aria-selected={estado === v} type="button" onClick={() => setEstado(v)}
                 className={clsx('rounded-md px-3 py-1 text-[12.5px] font-semibold', estado === v ? 'bg-brand text-white' : 'text-ink-2 hover:bg-surface-hover')}>{l}</button>
             ))}
@@ -70,17 +77,17 @@ export default function Historial() {
             <ul className={clsx('divide-y divide-line', isFetching && 'is-fetching')}>
               {items.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-surface-hover/50">
-                  <div className={clsx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', c.estado === 'publicada' ? 'bg-good-soft text-good' : 'bg-warn-soft text-warn')}>
-                    {c.estado === 'publicada' ? <Megaphone size={18} /> : <FilePen size={18} />}
+                  <div className={clsx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', c.estado === 'publicada' ? 'bg-good-soft text-good' : c.estado === 'programada' ? 'bg-info-soft text-info' : 'bg-warn-soft text-warn')}>
+                    {c.estado === 'publicada' ? <Megaphone size={18} /> : c.estado === 'programada' ? <CalendarClock size={18} /> : <FilePen size={18} />}
                   </div>
                   <div className="min-w-0 flex-1 basis-60">
                     <Link to={c.estado === 'borrador' ? `/campanas/${c.id}/editar` : `/campanas/${c.id}`} className="block truncate text-[14px] font-bold text-ink hover:text-brand">{c.nombre}</Link>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-3">
-                      <Badge tone={c.estado === 'publicada' ? 'good' : 'warn'}>{c.estado === 'publicada' ? 'Publicada (simulada)' : `Borrador · paso ${c.paso} de 4`}</Badge>
+                      <Badge tone={c.estado === 'publicada' ? 'good' : c.estado === 'programada' ? 'brand' : 'warn'}>{c.estado === 'publicada' ? 'Publicada (simulada)' : c.estado === 'programada' ? <><CalendarClock size={11} />Programada · {fmtProgramada(c.programada_para)}</> : `Borrador · paso ${c.paso} de 4`}</Badge>
                       <span>{c.n_productos ?? 0} producto(s)</span>
                       {(c.mensaje.canales ?? []).length > 0 && <span>{(c.mensaje.canales ?? []).map((k) => CANAL_LABEL[k] ?? k).join(' · ')}</span>}
                       {c.audiencia > 0 && <span>{fmtNum(c.audiencia)} destinatarios</span>}
-                      <span>{c.estado === 'publicada' ? `Publicada ${fmtFechaHora(c.publicada_en)}` : `Editada ${fmtFechaHora(c.actualizada)}`}</span>
+                      <span>{c.estado === 'publicada' ? `Publicada ${fmtFechaHora(c.publicada_en)}` : c.estado === 'programada' ? `Programada ${fmtFechaHora(c.actualizada)}` : `Editada ${fmtFechaHora(c.actualizada)}`}</span>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -88,6 +95,7 @@ export default function Historial() {
                     {c.estado === 'borrador'
                       ? <IconBtn title="Editar" onClick={() => nav(`/campanas/${c.id}/editar`)}><Pencil size={16} /></IconBtn>
                       : <IconBtn title="Duplicar como borrador" onClick={() => dup.mutate(c.id)}><Copy size={16} /></IconBtn>}
+                    {c.estado === 'programada' && <IconBtn title="Cancelar programación (vuelve a borrador)" onClick={() => desprog.mutate(c.id)}><CalendarX2 size={16} /></IconBtn>}
                     <IconBtn title="Eliminar" danger onClick={() => setBorrar(c)}><Trash2 size={16} /></IconBtn>
                   </div>
                 </li>

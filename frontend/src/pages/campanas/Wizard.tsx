@@ -1,13 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Rocket, Save } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, Rocket, Save } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Btn, ConfirmDialog, ErrorBox, Notice, Skeleton } from '@/components/ui'
 import { api, useGet, type Campana, type Mensaje, type Preview, type Producto } from '@/lib/api'
 import { fmtCop, fmtNum } from '@/lib/format'
+import { aLocalISO, errorFecha, fmtProgramada } from '@/lib/programacion'
 import PasoMensaje from './PasoMensaje'
 import PasoProductos from './PasoProductos'
+import PanelPublicacion, { fmtPrograma, PROGRAMA_INICIAL, type Programa } from './PanelPublicacion'
 import PasoSegmentacion, { type FiltrosSeg } from './PasoSegmentacion'
 import ResumenCampana, { pendientes } from './ResumenCampana'
 
@@ -41,7 +43,8 @@ export default function Wizard() {
   const [confirmar, setConfirmar] = useState(false)
   const [publicando, setPublicando] = useState(false)
   const [errPub, setErrPub] = useState<string | null>(null)
-  const [hecho, setHecho] = useState<{ destinatarios: number; costo: number; por_canal: Record<string, number> } | null>(null)
+  const [programa, setPrograma] = useState<Programa>(PROGRAMA_INICIAL)
+  const [hecho, setHecho] = useState<{ destinatarios: number; costo: number; por_canal: Record<string, number>; programada: boolean; cuando: string | null; control: number; avisos: string[] } | null>(null)
   const cargado = useRef(false)
 
   // Carga inicial de un borrador existente.
@@ -81,7 +84,12 @@ export default function Wizard() {
     } catch (e) { setErrGuardar(e); return null } finally { setGuardando(false) }
   }, [id, payload, qc])
 
-  const faltantes = useMemo(() => pendientes({ nombre, objetivo, productos, mensaje, filtros, audiencia: 0, costo: 0, preview }), [nombre, objetivo, productos, mensaje, filtros, preview])
+  const faltantes = useMemo(() => {
+    const p = pendientes({ nombre, objetivo, productos, mensaje, filtros, audiencia: 0, costo: 0, preview })
+    const e = programa.modo === 'programar' ? errorFecha(programa.fecha, programa.hora) : null
+    return e ? [...p, e] : p
+  }, [nombre, objetivo, productos, mensaje, filtros, preview, programa])
+  const programar = programa.modo === 'programar'
   const puedeIr = (n: number) => (n <= 1 ? true : n === 2 ? productos.length > 0 : n === 3 ? productos.length > 0 && mensaje.canales.length > 0 : productos.length > 0 && mensaje.canales.length > 0)
   const irA = async (n: number) => {
     if (!puedeIr(n)) return
@@ -96,8 +104,10 @@ export default function Wizard() {
     try {
       const cid = await guardar(4)
       if (!cid) { setPublicando(false); return }
-      const r = await api<{ destinatarios: number; costo_estimado: number; por_canal: Record<string, number> }>(`/campanas/${cid}/publicar`, { method: 'POST' })
-      setHecho({ destinatarios: r.destinatarios, costo: r.costo_estimado, por_canal: r.por_canal })
+      const r = await api<{ destinatarios: number; costo_estimado: number; por_canal: Record<string, number>; programada: boolean; programada_para: string | null; control: number; avisos: string[] }>(`/campanas/${cid}/publicar`, {
+        method: 'POST', body: { programar_para: programa.modo === 'programar' ? aLocalISO(programa.fecha, programa.hora) : null, control_pct: programa.control },
+      })
+      setHecho({ destinatarios: r.destinatarios, costo: r.costo_estimado, por_canal: r.por_canal, programada: r.programada, cuando: r.programada_para, control: r.control, avisos: r.avisos ?? [] })
       setConfirmar(false)
       void qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('/campanas') })
     } catch (e) { setErrPub(e instanceof Error ? e.message : 'No se pudo publicar') } finally { setPublicando(false) }
@@ -105,8 +115,9 @@ export default function Wizard() {
 
   if (idParam && isLoading) return <div className="mx-auto max-w-6xl space-y-3"><Skeleton h={60} /><Skeleton h={400} /></div>
   if (idParam && errCarga) return <div className="mx-auto max-w-3xl"><ErrorBox error={errCarga} /></div>
-  if (existente?.estado === 'publicada') {
-    return <div className="mx-auto max-w-3xl space-y-3"><Notice tone="info">Esta campaña ya fue publicada y no se puede editar.</Notice><Btn variant="primary" onClick={() => nav(`/campanas/${existente.id}`)}>Ver campaña</Btn></div>
+  // Ojo: tras publicar, la consulta se refresca y la campaña ya no es borrador; la pantalla de «hecho» debe mostrarse primero.
+  if (!hecho && existente && existente.estado !== 'borrador') {
+    return <div className="mx-auto max-w-3xl space-y-3"><Notice tone="info">{existente.estado === 'programada' ? 'Esta campaña está programada: cancele la programación (en «Ver campaña») para volver a editarla.' : 'Esta campaña ya fue publicada y no se puede editar.'}</Notice><Btn variant="primary" onClick={() => nav(`/campanas/${existente.id}`)}>Ver campaña</Btn></div>
   }
 
   if (hecho) {
@@ -114,9 +125,13 @@ export default function Wizard() {
       <div className="mx-auto max-w-2xl py-8">
         <div className="card p-8 text-center">
           <CheckCircle2 size={44} className="mx-auto text-good" />
-          <h1 className="mt-3 text-[20px] font-bold text-ink">Campaña publicada (simulación)</h1>
-          <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-ink-2">Se registró la campaña con <b>{fmtNum(hecho.destinatarios)}</b> destinatarios y un costo estimado de <b>{fmtCop(hecho.costo)}</b>.
-            Por ahora <b>no se envió ningún mensaje real</b>: la difusión por WhatsApp, SMS y correo se conectará en una siguiente fase.</p>
+          <h1 className="mt-3 text-[20px] font-bold text-ink">{hecho.programada ? 'Campaña programada' : 'Campaña publicada (simulación)'}</h1>
+          <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-ink-2">
+            {hecho.programada ? <>Se publicará el <b>{fmtProgramada(hecho.cuando)}</b> para </> : <>Se registró la campaña con </>}<b>{fmtNum(hecho.destinatarios)}</b> destinatarios y un costo estimado de <b>{fmtCop(hecho.costo)}</b>.
+            {hecho.control > 0 && <> Además <b>{fmtNum(hecho.control)}</b> personas quedaron como grupo de control (sin envío) para medir el efecto real.</>}{' '}
+            Por ahora <b>no se envía ningún mensaje real</b>: la difusión por WhatsApp, SMS y correo se conectará en una siguiente fase.</p>
+          {hecho.programada && <p className="mx-auto mt-2 max-w-md text-[12px] text-ink-3">Mientras esté programada puede cancelarla desde el historial para volver a editarla.</p>}
+          {hecho.avisos.map((a) => <div key={a} className="mx-auto mt-3 max-w-md text-left"><Notice tone="warn">{a}</Notice></div>)}
           <div className="mt-6 flex justify-center gap-2"><Btn onClick={() => nav('/campanas')}>Ir al historial</Btn><Btn variant="primary" onClick={() => nav(`/campanas/${id}`)}>Ver campaña</Btn></div>
         </div>
       </div>
@@ -165,6 +180,7 @@ export default function Wizard() {
       {paso === 4 && (
         <div className="space-y-4">
           <ResumenCampana d={{ nombre, objetivo, productos, mensaje, filtros, audiencia: preview?.resumen.audiencia ?? 0, costo: preview?.resumen.costo_estimado ?? 0, preview }} />
+          <PanelPublicacion valor={programa} onChange={setPrograma} canales={mensaje.canales} momento={preview?.resumen.momento} audiencia={preview?.resumen.audiencia ?? 0} />
           {!preview && <Notice tone="info">Para ver el costo y los destinatarios exactos, pase por el paso <b>Audiencia</b>.</Notice>}
           {faltantes.length > 0 && <Notice tone="warn"><b>Antes de publicar:</b><ul className="mt-1 list-disc pl-5">{faltantes.map((f) => <li key={f}>{f}</li>)}</ul></Notice>}
         </div>
@@ -177,12 +193,13 @@ export default function Wizard() {
         </span>
         {paso < 4
           ? <Btn variant="primary" disabled={!puedeIr(paso + 1)} busy={guardando} onClick={() => void irA(paso + 1)}>Siguiente <ArrowRight size={15} /></Btn>
-          : <Btn variant="accent" icon={<Rocket size={15} />} disabled={faltantes.length > 0} onClick={() => setConfirmar(true)}>Publicar campaña</Btn>}
+          : <Btn variant="accent" icon={programar ? <CalendarClock size={15} /> : <Rocket size={15} />} disabled={faltantes.length > 0} onClick={() => setConfirmar(true)}>{programar ? 'Programar campaña' : 'Publicar campaña'}</Btn>}
       </div>
 
-      <ConfirmDialog open={confirmar} title="Publicar campaña" confirmLabel="Publicar" busy={publicando} onCancel={() => setConfirmar(false)} onConfirm={() => void publicar()}>
-        Se registrará la campaña <b>{nombre || 'sin título'}</b> para <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}).
-        <div className="mt-2 rounded-lg bg-info-soft px-3 py-2 text-[12.5px] text-info">Es una <b>simulación</b>: no se enviará ningún mensaje real. Después de publicar la campaña ya no se podrá editar.</div>
+      <ConfirmDialog open={confirmar} title={programar ? 'Programar campaña' : 'Publicar campaña'} confirmLabel={programar ? 'Programar' : 'Publicar'} busy={publicando} onCancel={() => setConfirmar(false)} onConfirm={() => void publicar()}>
+        {programar ? <>Se programará la campaña <b>{nombre || 'sin título'}</b> para el <b>{fmtPrograma(programa)}</b>, dirigida a <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}).</>
+          : <>Se registrará la campaña <b>{nombre || 'sin título'}</b> para <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}).</>}
+        <div className="mt-2 rounded-lg bg-info-soft px-3 py-2 text-[12.5px] text-info">Es una <b>simulación</b>: no se enviará ningún mensaje real. {programar ? 'Mientras esté programada podrá cancelarla para volver a editarla; el público se recalcula al confirmar.' : 'Después de publicar la campaña ya no se podrá editar.'}</div>
         {errPub && <div className="mt-2 text-bad">{errPub}</div>}
       </ConfirmDialog>
     </div>

@@ -94,6 +94,9 @@
 }
 
 html, body, #root { height: 100%; }
+/* Solo <main> se desplaza. «clip» impide además que el navegador desplace la página entera al enfocar un control
+   (causa del bug en que la pantalla «se salía» al marcar filtros). */
+html, body { overflow: clip; }
 body {
   margin: 0;
   background: var(--page);

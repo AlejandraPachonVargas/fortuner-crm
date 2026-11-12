@@ -3,6 +3,7 @@ import { Mail, MessageCircle, MessageSquareText, PenLine, Sparkles } from 'lucid
 import { useEffect, useState } from 'react'
 import { Badge, Btn, Card, Chip, ErrorBox, Notice } from '@/components/ui'
 import { api, type Mensaje, type Producto, type Textos } from '@/lib/api'
+import VistaCanales from '@/components/VistaCanales'
 import { CANAL_LABEL, fmtNum } from '@/lib/format'
 
 interface Props { mensaje: Mensaje; onChange: (m: Mensaje) => void; productos: Producto[]; temporadaId: string | null }
@@ -20,9 +21,6 @@ const CANALES = [
 ] as const
 
 const TONOS = ['', 'Cercano y cálido', 'Urgente (oferta por tiempo limitado)', 'Elegante y premium', 'Festivo y alegre', 'Familiar', 'Directo y breve']
-
-const EJEMPLO = { nombre: 'María' }
-const personalizar = (t: string) => t.replace(/\{nombre\}/gi, EJEMPLO.nombre)
 
 export default function PasoMensaje({ mensaje, onChange, productos, temporadaId }: Props) {
   const [busy, setBusy] = useState(false)
@@ -109,21 +107,12 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
             </div>
           </Card>
         )}
-      </div>
-
-      <div className="space-y-4">
         {mensaje.canales.includes('whatsapp') && (
           <Card title="WhatsApp" subtitle={val.whatsapp ? `${fmtNum(val.whatsapp.caracteres)} caracteres` : undefined}
             actions={val.whatsapp && !val.whatsapp.ok ? <Badge tone="warn">Muy largo</Badge> : undefined}>
             <textarea aria-label="Texto de WhatsApp" rows={7} value={mensaje.textos.whatsapp?.texto ?? ''} maxLength={1200}
               onChange={(e) => setTexto('whatsapp', { texto: e.target.value })} placeholder={ia ? 'Aquí aparecerá la versión generada…' : 'Escriba su mensaje de WhatsApp. Use {nombre} para personalizar.'}
               className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand" />
-            {mensaje.textos.whatsapp?.texto && (
-              <div className="mt-3 rounded-xl bg-[#e7f5ec] p-3 dark:bg-[#10291a]">
-                <div className="max-w-[92%] rounded-xl rounded-tl-sm bg-white px-3 py-2 text-[12.5px] leading-snug whitespace-pre-wrap text-[#111b21] shadow-sm dark:bg-[#1f2c34] dark:text-[#e9edef]">{personalizar(mensaje.textos.whatsapp.texto)}</div>
-                <div className="mt-1 text-[10.5px] text-ink-3">Vista previa con «{EJEMPLO.nombre}»</div>
-              </div>
-            )}
             {val.whatsapp?.avisos.map((a) => <p key={a} className="mt-2 text-[12px] text-warn">{a}</p>)}
           </Card>
         )}
@@ -134,7 +123,6 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
             <textarea aria-label="Texto del SMS" rows={3} value={mensaje.textos.sms?.texto ?? ''} maxLength={400}
               onChange={(e) => setTexto('sms', { texto: e.target.value })} placeholder={ia ? 'Aquí aparecerá la versión generada…' : 'Escriba su SMS (ideal: máximo 160 caracteres, sin tildes ni emojis).'}
               className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand" />
-            {mensaje.textos.sms?.texto && <div className="mt-3 max-w-[85%] rounded-2xl rounded-bl-sm bg-surface-2 px-3 py-2 text-[12.5px] leading-snug whitespace-pre-wrap text-ink">{personalizar(mensaje.textos.sms.texto)}</div>}
             {val.sms?.avisos.map((a) => <p key={a} className="mt-2 text-[12px] text-warn">{a}</p>)}
           </Card>
         )}
@@ -150,17 +138,16 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
                 placeholder={ia ? 'Aquí aparecerá la versión generada…' : 'Cuerpo del correo en texto plano. Use {nombre} para personalizar.'}
                 className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand" />
             </div>
-            {mensaje.textos.email?.cuerpo && (
-              <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3">
-                <div className="text-[12.5px] font-bold text-ink">{personalizar(mensaje.textos.email.asunto ?? '')}</div>
-                {mensaje.textos.email.preheader && <div className="text-[11.5px] text-ink-3">{personalizar(mensaje.textos.email.preheader)}</div>}
-                <div className="mt-2 text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">{personalizar(mensaje.textos.email.cuerpo)}</div>
-              </div>
-            )}
             {val.email?.avisos.map((a) => <p key={a} className="mt-2 text-[12px] text-warn">{a}</p>)}
           </Card>
         )}
 
+      </div>
+
+      <div className="min-w-0 space-y-4 xl:sticky xl:top-0 xl:max-h-[calc(100vh-10.5rem)] xl:self-start xl:overflow-y-auto xl:pr-1 scroll-thin">
+        <Card title="Así lo verá el cliente" subtitle="Vista previa que se actualiza mientras escribe">
+          <VistaCanales mensaje={mensaje} productos={productos} />
+        </Card>
         {mensaje.canales.length > 0 && !tiene && ia && (
           <Notice tone="info">Escriba su indicación y pulse <b>Generar mensajes</b>: verá aquí las {mensaje.canales.length} sugerencias ({mensaje.canales.map((c) => CANAL_LABEL[c]).join(', ')}) para revisarlas y editarlas.</Notice>
         )}

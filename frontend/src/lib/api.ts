@@ -65,16 +65,22 @@ export interface Mensaje {
   modo: 'ia' | 'manual'; prompt: string; tono: string; canales: string[]; textos: Textos; tokens: number; temporada_id?: string | null
 }
 export interface Campana {
-  id: string; nombre: string; objetivo: string; estado: 'borrador' | 'publicada'; paso: number
+  id: string; nombre: string; objetivo: string; estado: 'borrador' | 'programada' | 'publicada'; paso: number
   productos: Producto[]; mensaje: Partial<Mensaje>; segmentacion: { filtros?: Record<string, unknown> }
   audiencia: number; costo_estimado: number; creada: string; actualizada: string; publicada_en: string | null
+  programada_para?: string | null; control_pct?: number; grupos?: { envio: number; control: number }
   n_productos?: number
+}
+export interface Momento {
+  dias: { id: number; n: number }[]; franjas: { id: string; n: number }[]
+  mejor_dia: number | null; mejor_franja: string | null
 }
 export interface Resumen {
   base_clientes: number; audiencia_candidata: number; audiencia: number; por_canal: Record<string, number>
   costo_estimado: number; costo_por_contacto: number; puntaje_promedio: number
   segmentos_rfm: { id: string; nombre: string; n: number }[]; sexo: { id: string; n: number }[]
   edades: { id: string; n: number }[]; ciclo: { id: string; nombre: string; n: number }[]; ciudades: { id: string; n: number }[]
+  momento?: Momento
   curva: { pct_audiencia: number; pct_potencial: number; contactos: number; puntaje_corte: number }[]
   corte_recomendado: { contactos: number; pct_audiencia: number; pct_potencial: number; puntaje_minimo: number } | null
 }

@@ -14,7 +14,7 @@ from ...config import get_settings
 from ...security import limitar_ia
 from ...store import get_store
 from ...warehouse import get_warehouse
-from . import calendario, productos as prod, redaccion, segmentos as seg
+from . import calendario, productos as prod, programacion, redaccion, segmentos as seg
 
 log = logging.getLogger("crm.campanas")
 router = APIRouter(prefix="/api/campanas", tags=["campañas"])
@@ -322,7 +322,7 @@ async def recomendar_segmento(b: RecomendarSegmento):
 
 # ------------------------------------------------------------------------------------------ CRUD
 @router.get("")
-async def listar(estado: str | None = Query(None, pattern="^(borrador|publicada)$"), q: str | None = Query(None, max_length=100)):
+async def listar(estado: str | None = Query(None, pattern="^(borrador|programada|publicada)$"), q: str | None = Query(None, max_length=100)):
     filas = get_store().listar(estado, q)
     return {"items": [{**c, "mensaje": {"canales": (c["mensaje"] or {}).get("canales", [])},
                        "segmentacion": {}, "n_productos": len(c["productos"]), "productos": c["productos"][:3]} for c in filas]}
@@ -338,7 +338,7 @@ async def obtener(cid: str):
     c = get_store().obtener(cid)
     if not c:
         raise HTTPException(404, "Campaña no encontrada.")
-    return c
+    return {**c, "grupos": get_store().conteo_destinatarios(cid)}
 
 
 @router.put("/{cid}")
@@ -367,16 +367,29 @@ async def duplicar(cid: str, request: Request):
                               "productos": c["productos"], "mensaje": c["mensaje"], "segmentacion": c["segmentacion"]}, _origen(request))
 
 
+class PublicarIn(BaseModel):
+    programar_para: str | None = Field(None, max_length=40, description="Fecha y hora local ISO (2026-11-14T16:30). Vacío = ahora.")
+    control_pct: int = Field(0, ge=0, le=20, description="% de la audiencia que se reserva sin enviar para medir el efecto.")
+
+
 @router.post("/{cid}/publicar")
-async def publicar(cid: str, request: Request):
-    """Publicación SIMULADA: recalcula la audiencia en el servidor, guarda los destinatarios y marca la campaña como
-    publicada. No se envía ningún mensaje (ver README: «Difusión real»)."""
+async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
+    """Publicación SIMULADA (ahora o programada): recalcula la audiencia en el servidor, guarda los destinatarios y marca la
+    campaña como publicada/programada. No se envía ningún mensaje (ver README: «Difusión real»)."""
     store = get_store()
+    b = b or PublicarIn()
     c = store.obtener(cid)
     if not c:
         raise HTTPException(404, "Campaña no encontrada.")
-    if c["estado"] == "publicada":
-        raise HTTPException(409, "La campaña ya fue publicada.")
+    if c["estado"] != "borrador":
+        raise HTTPException(409, "La campaña ya fue publicada." if c["estado"] == "publicada"
+                            else "La campaña ya está programada: cancele la programación para cambiarla.")
+    cuando = None
+    if b.programar_para:
+        try:
+            cuando = programacion.parsear(b.programar_para)
+        except programacion.FechaInvalida as e:
+            raise HTTPException(422, str(e)) from None
     msg = c["mensaje"] or {}
     textos = msg.get("textos") or {}
     canales = [k for k in (msg.get("canales") or []) if k in seg.CANALES]
@@ -393,7 +406,28 @@ async def publicar(cid: str, request: Request):
     if not dest:
         raise HTTPException(422, "La segmentación no deja ningún destinatario contactable.")
     r = seg.resumen(cols, rows, f, 0)
-    store.actualizar(cid, {"audiencia": len(dest), "costo_estimado": r["costo_estimado"]}, _origen(request))
-    out = store.publicar(cid, dest, _origen(request))
-    return {"campana": out, "simulado": True, "destinatarios": len(dest), "costo_estimado": r["costo_estimado"],
-            "por_canal": r["por_canal"]}
+    control = {cl for cl, _ in dest if programacion.en_control(cid, cl, b.control_pct)}
+    n_envio = len(dest) - len(control)
+    if n_envio <= 0:
+        raise HTTPException(422, "El grupo de control dejaría la campaña sin destinatarios: reduzca el porcentaje.")
+    # El costo se calcula sobre quienes sí recibirán el mensaje (el grupo de control no se cobra).
+    costo = round(r["costo_estimado"] * n_envio / len(dest))
+    por_canal = {k: round(v * n_envio / len(dest)) for k, v in r["por_canal"].items()}
+    origen = _origen(request)
+    store.actualizar(cid, {"audiencia": n_envio, "costo_estimado": costo}, origen)
+    if cuando:
+        out = store.programar(cid, cuando, dest, origen, control, b.control_pct)
+    else:
+        out = store.publicar(cid, dest, origen, control, b.control_pct)
+    return {"campana": out, "simulado": True, "programada": bool(cuando), "programada_para": cuando.isoformat() if cuando else None,
+            "destinatarios": n_envio, "control": len(control), "costo_estimado": costo, "por_canal": por_canal,
+            "avisos": programacion.avisos_horario(cuando, canales) if cuando else []}
+
+
+@router.post("/{cid}/cancelar-programacion")
+async def cancelar_programacion(cid: str, request: Request):
+    """Una campaña programada vuelve a borrador (editable) y sus destinatarios reservados quedan libres."""
+    out = get_store().desprogramar(cid, _origen(request))
+    if not out:
+        raise HTTPException(409, "La campaña no está programada.")
+    return out
