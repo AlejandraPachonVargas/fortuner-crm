@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { CheckCircle2, CircleAlert, Package, Target, Wallet } from 'lucide-react'
 import { Badge, Card, Notice, Stat } from '@/components/ui'
 import type { Mensaje, Preview, Producto } from '@/lib/api'
@@ -55,36 +56,36 @@ export default function ResumenCampana({ d, calidad = true }: { d: DatosCampana;
   const capital = d.productos.reduce((a, p) => a + (p.precio_venta || 0), 0)
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Productos" value={fmtNum(d.productos.length)} sub={d.productos.length ? `Suma de precios ${fmtCop(capital)}` : undefined} />
-        <Stat label="Canales" value={canales.length ? canales.map((c) => CANAL_LABEL[c]).join(' · ') : '—'} />
+        <Stat label="Canales" value={<span className="text-[15px]">{canales.length ? canales.map((c) => CANAL_LABEL[c]).join(" · ") : "—"}</span>} />
         <Stat label="Destinatarios" value={fmtNum(audiencia)} />
         <Stat label="Costo estimado" value={fmtCop(costo)} sub={audiencia ? `${fmtCop(costo / audiencia)} por persona` : undefined} />
       </div>
       {d.productos.some((p) => !(p.precio_venta > 0)) && (
         <Notice tone="warn">{d.productos.filter((p) => !(p.precio_venta > 0)).length} producto(s) no tienen precio de venta en el ERP: el mensaje no debe mencionar su precio. Revíselo con Compras o retírelos.</Notice>
       )}
-      {d.objetivo && <p className="rounded-xl bg-surface-2 px-4 py-3 text-[13px] text-ink-2"><b className="text-ink">Objetivo: </b>{d.objetivo}</p>}
+      {d.objetivo && <p className="rounded-2xl border border-line bg-surface px-4 py-3 text-[13px] text-ink-2"><b className="text-ink">Objetivo: </b>{d.objetivo}</p>}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="1 · Productos" actions={<Package size={16} className="text-ink-3" />} pad={false}>
-          {d.productos.length === 0 ? <p className="p-4 text-[13px] text-ink-3">Sin productos.</p> : (
-            <ul className="max-h-80 divide-y divide-line overflow-y-auto scroll-thin">
+      <div className={clsx('grid items-stretch gap-5', calidad ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
+        <Card icon={<Package size={18} />} title="Productos" subtitle={`${d.productos.length} seleccionado(s)`} pad={false}>
+          {d.productos.length === 0 ? <p className="px-5 pb-5 text-[13px] text-ink-3">Sin productos.</p> : (
+            <ul className="max-h-72 divide-y divide-line overflow-y-auto scroll-thin">
               {d.productos.map((p) => (
-                <li key={p.producto_id} className="px-4 py-2.5">
+                <li key={p.producto_id} className="px-5 py-2.5">
                   <div className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{p.producto}</span><span className="text-[12px] font-semibold tnum text-ink-2">{p.precio_venta > 0 ? fmtCop(p.precio_venta) : 'Sin precio'}</span></div>
-                  {p.razon && <p className="mt-0.5 text-[11.5px] text-ink-3">{p.razon}</p>}
+                  {p.razon && <p className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-3">{p.razon}</p>}
                 </li>
               ))}
             </ul>
           )}
         </Card>
 
-        <Card title="3 · Audiencia" actions={<Target size={16} className="text-ink-3" />}>
-          {activos.length === 0 ? <p className="text-[13px] text-ink-2">Sin segmentadores: todos los clientes contactables con autorización.</p> : (
+        <Card icon={<Target size={18} />} title="Audiencia" subtitle={activos.length ? `${activos.length} segmentador(es)` : 'Sin segmentadores'}>
+          {activos.length === 0 ? <p className="text-[13px] text-ink-2">Todos los clientes contactables con autorización.</p> : (
             <dl className="space-y-1.5 text-[12.5px]">
-              {activos.map((a) => <div key={a.k} className="flex gap-2"><dt className="w-40 shrink-0 text-ink-3">{a.k}</dt><dd className="min-w-0 flex-1 font-medium text-ink">{a.v}</dd></div>)}
+              {activos.map((a) => <div key={a.k} className="flex gap-2"><dt className="w-32 shrink-0 text-ink-3">{a.k}</dt><dd className="min-w-0 flex-1 font-medium text-ink">{a.v}</dd></div>)}
             </dl>
           )}
           {r && (
@@ -95,16 +96,15 @@ export default function ResumenCampana({ d, calidad = true }: { d: DatosCampana;
           )}
           {d.preview?.restricciones.excluye_menores && <div className="mt-3"><Notice tone="warn">Incluye productos de venta restringida: se excluyen menores de edad y clientes sin fecha de nacimiento.</Notice></div>}
         </Card>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <Card title="2 · Así lo verá el cliente" actions={<Wallet size={16} className="text-ink-3" />}>
-          <VistaCanales mensaje={m} productos={d.productos} />
-          {(m.tokens ?? 0) > 0 && <p className="mt-3 text-[11.5px] text-ink-3">Redactado con IA · {fmtNum(m.tokens)} tokens consumidos.</p>}
-          {m.modo === 'manual' && <p className="mt-3 text-[11.5px] text-ink-3">Redacción propia (sin IA, sin tokens).</p>}
-        </Card>
         {calidad && <CalidadMensaje m={m} productos={d.productos} restringido={Boolean(d.preview?.restricciones.excluye_menores)} />}
       </div>
+
+      <Card icon={<Wallet size={18} />} title="Así lo verá el cliente" subtitle="Vista previa de cada canal">
+        <VistaCanales mensaje={m} productos={d.productos} todos />
+        {(m.tokens ?? 0) > 0 && <p className="mt-3 text-[11.5px] text-ink-3">Redactado con IA · {fmtNum(m.tokens)} tokens consumidos.</p>}
+        {m.modo === 'manual' && <p className="mt-3 text-[11.5px] text-ink-3">Redacción propia (sin IA, sin tokens).</p>}
+      </Card>
     </div>
   )
 }

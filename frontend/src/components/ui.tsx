@@ -76,20 +76,39 @@ export function Badge({ tone = 'neutral', children, title }: { tone?: Tone; chil
   return <span title={title} className={clsx('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold', t[tone])}>{children}</span>
 }
 
-export function Card({ title, subtitle, actions, children, className, pad = true }: { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; pad?: boolean }) {
+export function Card({ title, subtitle, actions, children, className, pad = true, icon }: { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; pad?: boolean; icon?: ReactNode }) {
   return (
-    <section className={clsx('card', className)}>
+    <section className={clsx('card flex flex-col', className)}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+        <header className="flex flex-wrap items-center gap-3 px-5 pt-4 pb-3">
+          {icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand" aria-hidden="true">{icon}</span>}
           <div className="min-w-0 flex-1">
-            <h2 className="text-[14px] font-bold text-ink">{title}</h2>
+            <h2 className="text-[14.5px] font-bold text-ink">{title}</h2>
             {subtitle && <div className="text-[12px] text-ink-3">{subtitle}</div>}
           </div>
           {actions}
         </header>
       )}
-      <div className={clsx(pad && 'p-4')}>{children}</div>
+      <div className={clsx('flex-1', pad && (title || actions ? 'px-5 pt-1 pb-5' : 'p-5'))}>{children}</div>
     </section>
+  )
+}
+
+/** Sección plegable (acordeón): ordena listas largas de controles. `activos` = cuántos filtros tiene marcados. */
+export function Seccion({ titulo, icono, activos = 0, abierta = false, children }: { titulo: string; icono?: ReactNode; activos?: number; abierta?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(abierta)
+  const id = useId()
+  return (
+    <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-hover/60">
+        {icono && <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-2" aria-hidden="true">{icono}</span>}
+        <span className="min-w-0 flex-1 text-[13.5px] font-bold text-ink">{titulo}</span>
+        {activos > 0 && <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-bold text-white">{activos}</span>}
+        <ChevronDown size={16} className={clsx('shrink-0 text-ink-3 transition-transform', open && 'rotate-180')} aria-hidden="true" />
+      </button>
+      {open && <div id={id} className="space-y-5 border-t border-line bg-surface-2/40 px-4 py-4">{children}</div>}
+    </div>
   )
 }
 
@@ -229,8 +248,8 @@ export function ConfirmDialog({ open, title, children, confirmLabel, danger, bus
 
 export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'good' | 'warn' | 'bad' }) {
   return (
-    <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3">
-      <div className="text-[11.5px] font-semibold text-ink-3">{label}</div>
+    <div className="rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-[var(--shadow)]">
+      <div className="text-[11.5px] font-semibold tracking-wide text-ink-3 uppercase">{label}</div>
       <div className={clsx('mt-0.5 text-[20px] leading-tight font-bold tnum', tone === 'good' ? 'text-good' : tone === 'warn' ? 'text-warn' : tone === 'bad' ? 'text-bad' : 'text-ink')}>{value}</div>
       {sub && <div className="mt-0.5 text-[11.5px] text-ink-3">{sub}</div>}
     </div>

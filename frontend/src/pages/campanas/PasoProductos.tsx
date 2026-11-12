@@ -23,16 +23,17 @@ export default function PasoProductos({ value, onChange, temporadaId, onTemporad
   const addMany = (ps: Producto[]) => onChange([...value, ...ps.filter((p) => !sel.has(p.producto_id)).map(snapshot)])
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Origen de los productos" className="inline-flex max-w-full flex-wrap gap-1 rounded-2xl border border-line bg-surface-2 p-1">
+        {([['temporada', CalendarDays, 'Sugeridos por temporada (IA)'], ['inventario', TrendingDown, 'Por inventario y rotación'], ['manual', Search, 'Búsqueda manual con filtros']] as const).map(([id, Icon, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} type="button" onClick={() => setTab(id)}
+            className={clsx('flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold transition', tab === id ? 'bg-surface text-brand shadow-sm' : 'text-ink-2 hover:text-ink')}>
+            <Icon size={16} />{label}
+          </button>
+        ))}
+      </div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="min-w-0 space-y-4">
-        <div role="tablist" aria-label="Origen de los productos" className="flex flex-wrap gap-2">
-          {([['temporada', CalendarDays, 'Sugeridos por temporada (IA)'], ['inventario', TrendingDown, 'Por inventario y rotación'], ['manual', Search, 'Búsqueda manual con filtros']] as const).map(([id, Icon, label]) => (
-            <button key={id} role="tab" aria-selected={tab === id} type="button" onClick={() => setTab(id)}
-              className={clsx('flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition', tab === id ? 'border-brand bg-brand-soft text-brand' : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-hover')}>
-              <Icon size={16} />{label}
-            </button>
-          ))}
-        </div>
         {tab === 'temporada' && <TabTemporada sel={sel} toggle={toggle} addMany={addMany} temporadaId={temporadaId} onTemporada={onTemporada} />}
         {tab === 'inventario' && <TabInventario sel={sel} toggle={toggle} addMany={addMany} />}
         {tab === 'manual' && <TabManual sel={sel} toggle={toggle} addMany={addMany} />}
@@ -45,7 +46,7 @@ export default function PasoProductos({ value, onChange, temporadaId, onTemporad
             : (
               <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto scroll-thin">
                 {value.map((p) => (
-                  <li key={p.producto_id} className="flex items-start gap-2 px-4 py-2.5">
+                  <li key={p.producto_id} className="flex items-start gap-2 px-5 py-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[12.5px] font-semibold text-ink" title={p.producto}>{p.producto}</div>
                       <div className="truncate text-[11.5px] text-ink-3">{p.marca} · {fmtCop(p.precio_venta)}</div>
@@ -58,6 +59,7 @@ export default function PasoProductos({ value, onChange, temporadaId, onTemporad
             )}
         </Card>
       </aside>
+      </div>
     </div>
   )
 }

@@ -186,7 +186,7 @@ export default function Wizard() {
         </div>
       )}
 
-      <div className="sticky bottom-0 z-20 -mx-4 flex items-center gap-2 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur md:-mx-5 md:px-5">
+      <div className="flex items-center gap-3 pt-1 pb-6">
         <Btn variant="ghost" icon={<ArrowLeft size={15} />} onClick={() => (paso === 1 ? nav('/campanas') : void irA(paso - 1))}>{paso === 1 ? 'Volver al historial' : 'Atrás'}</Btn>
         <span className="ml-auto hidden text-[12px] text-ink-3 sm:block">
           {productos.length} producto(s){preview ? ` · ${fmtNum(preview.resumen.audiencia)} destinatarios · ${fmtCop(preview.resumen.costo_estimado)}` : ''}

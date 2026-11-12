@@ -25,21 +25,10 @@ function formatoWA(texto: string): ReactNode[] {
 }
 
 function Telefono({ children, etiqueta }: { children: ReactNode; etiqueta: string }) {
+  // Tarjeta limpia, sin marco de celular: sombra suave y bordes redondeados.
   return (
-    <div role="img" aria-label={etiqueta} className="mx-auto w-[292px] rounded-[2.4rem] border-[7px] border-[#17181b] bg-[#17181b] shadow-xl">
-      <div className="relative overflow-hidden rounded-[1.9rem] bg-white">
-        <div className="absolute top-1.5 left-1/2 z-10 h-[14px] w-[78px] -translate-x-1/2 rounded-full bg-[#17181b]" />
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function BarraEstado({ oscura }: { oscura?: boolean }) {
-  return (
-    <div className={clsx('flex items-center justify-between px-5 pt-2 pb-1 text-[10.5px] font-semibold', oscura ? 'text-white' : 'text-black')}>
-      <span>{hora()}</span>
-      <span className="flex items-center gap-1" aria-hidden><span className="text-[9px]">5G</span><span className="inline-block h-2 w-4 rounded-[2px] border border-current"><span className="block h-full w-3/4 bg-current" /></span></span>
+    <div role="img" aria-label={etiqueta} className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl bg-white shadow-[0_20px_50px_-14px_rgba(11,29,54,0.30)] ring-1 ring-black/5">
+      {children}
     </div>
   )
 }
@@ -48,8 +37,7 @@ function BarraEstado({ oscura }: { oscura?: boolean }) {
 function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
   return (
     <Telefono etiqueta="Así se vería el mensaje en WhatsApp">
-      <div className="bg-[#075e54]">
-        <BarraEstado oscura />
+      <div className="bg-[#075e54] pt-2">
         <div className="flex items-center gap-2 px-2 pt-1 pb-2 text-white">
           <ArrowLeft size={18} />
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[13px] font-extrabold text-[#075e54]">F</span>
@@ -57,7 +45,7 @@ function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
           <Video size={17} /><Phone size={16} /><MoreVertical size={17} />
         </div>
       </div>
-      <div className="min-h-[330px] bg-[#efeae2] px-2.5 py-3" style={{ backgroundImage: 'radial-gradient(rgba(0,0,0,.045) 1px, transparent 1px)', backgroundSize: '14px 14px' }}>
+      <div className="min-h-[300px] bg-[#efeae2] px-2.5 py-3" style={{ backgroundImage: 'radial-gradient(rgba(0,0,0,.045) 1px, transparent 1px)', backgroundSize: '14px 14px' }}>
         <div className="mx-auto mb-2.5 w-fit rounded-md bg-[#fff5c4] px-2 py-0.5 text-[10px] text-[#54656f] shadow-sm">HOY</div>
         {texto ? (
           <div className="relative max-w-[88%] rounded-lg rounded-tl-none bg-white px-2.5 pt-1.5 pb-4 text-[12.5px] leading-[1.35] whitespace-pre-wrap text-[#111b21] shadow-sm">
@@ -77,15 +65,14 @@ function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
 function SmsVista({ texto, nombre }: { texto: string; nombre: string }) {
   return (
     <Telefono etiqueta="Así se vería el SMS en el celular">
-      <div className="bg-[#f6f6f8] pb-1.5">
-        <BarraEstado />
+      <div className="bg-[#f6f6f8] pt-2 pb-1.5">
         <div className="flex items-center px-2 text-[#007aff]"><ChevronLeft size={22} /><span className="flex-1" /></div>
         <div className="-mt-4 flex flex-col items-center pb-1">
           <span className="grid h-9 w-9 place-items-center rounded-full bg-[#a5aab3] text-[14px] font-bold text-white">F</span>
           <span className="mt-0.5 text-[10.5px] font-medium text-black">{EMPRESA.toUpperCase()}</span>
         </div>
       </div>
-      <div className="min-h-[330px] border-t border-[#d1d1d6] bg-white px-3 py-3">
+      <div className="min-h-[300px] border-t border-[#d1d1d6] bg-white px-3 py-3">
         <div className="mb-2.5 text-center text-[10px] text-[#8e8e93]"><b>Mensaje de texto</b> · Hoy {hora()}</div>
         {texto ? (
           <div className="max-w-[80%] rounded-[1.15rem] rounded-bl-md bg-[#e9e9eb] px-3 py-2 text-[13px] leading-[1.3] whitespace-pre-wrap text-black">{personalizar(texto, nombre)}</div>
@@ -154,12 +141,13 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
 // ----------------------------------------------------------------------------------------------- contenedor con pestañas
 const ICONO = { whatsapp: MessageCircle, sms: MessageSquareText, email: Mail } as const
 
-export default function VistaCanales({ mensaje, productos, className }: { mensaje: Partial<Mensaje>; productos: Producto[]; className?: string }) {
+export default function VistaCanales({ mensaje, productos, className, canal, onCanal, sinPestanas, todos }: { mensaje: Partial<Mensaje>; productos: Producto[]; className?: string; canal?: string; onCanal?: (c: string) => void; sinPestanas?: boolean; todos?: boolean }) {
   const canales = (mensaje.canales ?? []).filter((c): c is 'whatsapp' | 'sms' | 'email' => c in ICONO)
   const [sel, setSel] = useState<string>('')
   const [nombre, setNombre] = useState('María')
   const idNombre = useId()
-  const activo = canales.includes(sel as never) ? sel : canales[0]
+  const elegido = canal ?? sel
+  const activo = canales.includes(elegido as never) ? elegido : canales[0]
   const t = mensaje.textos ?? {}
   const nombreOk = useMemo(() => nombre.trim().slice(0, 30) || 'María', [nombre])
 
@@ -167,22 +155,34 @@ export default function VistaCanales({ mensaje, productos, className }: { mensaj
   return (
     <div className={className}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Canal de la vista previa" className="flex rounded-lg border border-line-strong p-0.5">
+        <div role="tablist" aria-label="Canal de la vista previa" className={clsx("flex rounded-xl bg-surface-2 p-1", (sinPestanas || todos) && "hidden")}>
           {canales.map((c) => {
             const I = ICONO[c]
             return (
-              <button key={c} type="button" role="tab" aria-selected={activo === c} onClick={() => setSel(c)}
-                className={clsx('flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] font-semibold', activo === c ? 'bg-brand text-white' : 'text-ink-2 hover:bg-surface-hover')}><I size={14} />{CANAL_LABEL[c]}</button>
+              <button key={c} type="button" role="tab" aria-selected={activo === c} onClick={() => { setSel(c); onCanal?.(c) }}
+                className={clsx('flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] font-semibold', activo === c ? 'bg-surface text-brand shadow-sm' : 'text-ink-2 hover:text-ink')}><I size={14} />{CANAL_LABEL[c]}</button>
             )
           })}
         </div>
         <label htmlFor={idNombre} className="ml-auto flex items-center gap-1.5 text-[11.5px] text-ink-3">Vista con el nombre
           <input id={idNombre} value={nombre} maxLength={30} onChange={(e) => setNombre(e.target.value)} className="h-7 w-24 rounded-md border border-line-strong bg-surface px-2 text-[12px] text-ink" /></label>
       </div>
-      <div className="rounded-xl bg-surface-2 px-3 py-5">
-        {activo === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} />}
-        {activo === 'sms' && <SmsVista texto={t.sms?.texto ?? ''} nombre={nombreOk} />}
-        {activo === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={productos} />}
+      <div className="rounded-2xl bg-gradient-to-br from-brand-soft/70 via-surface-2 to-surface-2 px-3 py-7">
+        {todos ? (
+          <div className={clsx('grid items-start gap-x-6 gap-y-8', canales.length > 1 && 'md:grid-cols-2', canales.length > 2 && 'xl:grid-cols-3')}>
+            {canales.map((c) => (
+              <div key={c} className="min-w-0">
+                <div className="mb-3 flex items-center justify-center gap-1.5 text-[12px] font-bold tracking-wide text-ink-2 uppercase">{(() => { const I = ICONO[c]; return <I size={14} /> })()}{CANAL_LABEL[c]}</div>
+                {c === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} />}
+                {c === 'sms' && <SmsVista texto={t.sms?.texto ?? ''} nombre={nombreOk} />}
+                {c === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={productos} />}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {!todos && activo === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} />}
+        {!todos && activo === 'sms' && <SmsVista texto={t.sms?.texto ?? ''} nombre={nombreOk} />}
+        {!todos && activo === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={productos} />}
       </div>
       <p className="mt-2 text-[11px] text-ink-3">Aproximación de cómo lo verá el cliente: cada aplicación (y cada celular) puede variar un poco el diseño.</p>
     </div>

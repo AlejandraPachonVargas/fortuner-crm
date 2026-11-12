@@ -27,8 +27,8 @@
   --warn-soft: #fff4dc;
   --info: #256abf;
   --info-soft: #e8f1fc;
-  --shadow: 0 1px 2px rgba(15, 20, 25, 0.04), 0 1px 3px rgba(15, 20, 25, 0.06);
-  --radius: 12px;
+  --shadow: 0 1px 2px rgba(15, 20, 25, 0.03), 0 4px 14px rgba(15, 20, 25, 0.04);
+  --radius: 16px;
   /* Marca corporativa DSI y cabecera del asistente (iguales en ambos temas) */
   --accent: #00aeef;
   --accent-hover: #0aa0dc;
