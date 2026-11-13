@@ -7,7 +7,7 @@ import { useGet, type Estado } from '@/lib/api'
 import { fmtFecha } from '@/lib/format'
 
 const PROXIMOS = [
-  { label: 'Clientes 360°', icon: Users }, { label: 'Automatizaciones', icon: Workflow },
+  { label: 'Automatizaciones', icon: Workflow },
   { label: 'Analítica de campañas', icon: BarChart3 }, { label: 'Configuración', icon: Settings },
 ]
 
@@ -48,6 +48,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/campanas" title="Campañas" className={({ isActive }) => clsx('mt-1 mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition', isActive ? 'bg-accent text-white shadow' : 'text-[#c1cad8] hover:bg-white/5 hover:text-white')}>
             <Megaphone size={17} className="shrink-0" />{open && <span>Campañas</span>}
           </NavLink>
+          <NavLink to="/clientes" title="Clientes 360°" className={({ isActive }) => clsx('mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition', isActive ? 'bg-accent text-white shadow' : 'text-[#c1cad8] hover:bg-white/5 hover:text-white')}>
+            <Users size={17} className="shrink-0" />{open && <span>Clientes 360°</span>}
+          </NavLink>
           {open && <div className="mt-4 px-2 py-1 text-[11px] font-bold tracking-wider text-[#6f8fb5] uppercase">Próximamente</div>}
           {PROXIMOS.map((p) => (
             <div key={p.label} title={`${p.label} (en construcción)`} aria-disabled="true" className="mb-0.5 flex cursor-not-allowed items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-[#56647a]">
@@ -60,8 +63,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur">
           <button type="button" aria-label="Menú" title="Menú" onClick={() => setOpen(!open)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-2 hover:bg-surface-hover">{open ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}</button>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-bold text-ink">Campañas</div>
-            <div className="truncate text-[11.5px] text-ink-3">Productos, mensaje con IA y audiencia segmentada{sys ? ` · ${sys.zona}` : ''}</div>
+            <div className="truncate text-[15px] font-bold text-ink">{loc.pathname.startsWith('/clientes') ? 'Clientes 360°' : 'Campañas'}</div>
+            <div className="truncate text-[11.5px] text-ink-3">{loc.pathname.startsWith('/clientes') ? 'Ficha, calidad de datos y afiliaciones de cada cliente' : 'Productos, mensaje con IA y audiencia segmentada'}{sys ? ` · ${sys.zona}` : ''}</div>
           </div>
           {sys && !sys.datos && <Badge tone="bad" title="Ejecute la carga de datos del ERP">Sin datos del ERP</Badge>}
           {sys?.etl.corriendo && <Badge tone="warn" title={sys.etl.mensaje}>Cargando datos…</Badge>}

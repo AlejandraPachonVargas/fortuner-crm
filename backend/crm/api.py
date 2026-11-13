@@ -17,6 +17,7 @@ from .ai.llm import LLMClient, LLMError, cerrar_http
 from .config import ROOT_DIR, get_settings
 from .etl import pipeline
 from .modules.campanas.router import router as campanas_router
+from .modules.clientes.router import router as clientes_router
 from .security import SECURITY_HEADERS, require_admin, require_api_key, verificar_configuracion
 from .store import get_store
 from .warehouse import WarehouseNoDisponible, get_warehouse
@@ -46,6 +47,9 @@ async def lifespan(app: FastAPI):
     verificar_configuracion(s)
     store = get_store(s)  # crea (y migra) la base de campañas
     planificador = asyncio.create_task(_planificador(store))
+    if s.ads_data_directory and s.ads_crm_directory:
+        from .modules.clientes.indice import get_indice
+        get_indice().recargar_en_segundo_plano()  # ~15 s: la lista de clientes queda lista sin bloquear el arranque
     yield
     planificador.cancel()
     await cerrar_http()
@@ -60,11 +64,12 @@ app = FastAPI(
 )
 
 if _s.cors_list:
-    app.add_middleware(CORSMiddleware, allow_origins=_s.cors_list, allow_methods=["GET", "POST", "PUT", "DELETE"],
-                       allow_headers=["Content-Type", "X-API-Key", "Authorization"])
+    app.add_middleware(CORSMiddleware, allow_origins=_s.cors_list, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+                       allow_headers=["Content-Type", "X-API-Key", "Authorization", "X-CRM-Usuario"])
 elif not _s.is_production:
     app.add_middleware(CORSMiddleware, allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
-                       allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Content-Type", "X-API-Key", "Authorization"])
+                       allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+                       allow_headers=["Content-Type", "X-API-Key", "Authorization", "X-CRM-Usuario"])
 
 
 @app.middleware("http")
@@ -131,6 +136,7 @@ async def lanzar_etl(full: bool = False):
 
 
 app.include_router(campanas_router, dependencies=[Depends(require_api_key)])
+app.include_router(clientes_router, dependencies=[Depends(require_api_key)])
 
 
 # --------------------------------------------------------------------------------- SPA (producción)

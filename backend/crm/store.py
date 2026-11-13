@@ -286,6 +286,19 @@ class Store:
                 (f"-{int(dias)} days",)).fetchall()
         return {r[0] for r in rows}
 
+    def campanas_de_clientes(self, cliente_ids: list[str], limite: int = 50) -> list[dict]:
+        """Campañas (publicadas o programadas) en las que estuvo cada cliente: para la ficha de Clientes 360°."""
+        ids = [i for i in cliente_ids if i][:50]
+        if not ids:
+            return []
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT c.id, c.nombre, c.estado, COALESCE(c.publicada_en, c.programada_para, c.actualizada) AS fecha, "
+                "d.canales, d.grupo FROM destinatario d JOIN campana c ON c.id = d.campana_id "
+                f"WHERE c.eliminada_en IS NULL AND d.cliente_id IN ({','.join('?' * len(ids))}) "
+                "ORDER BY fecha DESC LIMIT ?", (*ids, limite)).fetchall()
+        return [dict(r) for r in rows]
+
 
 _store: Store | None = None
 

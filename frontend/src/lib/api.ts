@@ -11,27 +11,54 @@ export class ApiError extends Error {
   constructor(message: string, status: number, codigo?: string) { super(message); this.status = status; this.codigo = codigo }
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+// Nombre con el que se firman los cambios en la auditoría de Clientes 360° (cada persona escribe el suyo).
+const USUARIO = 'crm-usuario'
+export const getUsuario = () => { try { return localStorage.getItem(USUARIO) ?? '' } catch { return '' } }
+export const setUsuario = (u: string) => { try { u ? localStorage.setItem(USUARIO, u.slice(0, 30)) : localStorage.removeItem(USUARIO) } catch { /* sin storage */ } }
+
+function cabeceras(conCuerpo: boolean): Record<string, string> {
   const headers: Record<string, string> = {}
   const key = getKey()
   if (key) headers['X-API-Key'] = key
-  if (init.body !== undefined) headers['Content-Type'] = 'application/json'
+  const u = getUsuario()
+  if (u) headers['X-CRM-Usuario'] = u.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .@-]/g, '')
+  if (conCuerpo) headers['Content-Type'] = 'application/json'
+  return headers
+}
+
+async function fallo(r: Response): Promise<never> {
+  let data: unknown = null
+  try { data = await r.json() } catch { /* cuerpo vacío */ }
+  const d = data as { detail?: unknown; codigo?: string } | null
+  let msg = typeof d?.detail === 'string' ? d.detail : ''
+  let codigo = d?.codigo
+  if (!msg && d?.detail && typeof d.detail === 'object' && !Array.isArray(d.detail)) {
+    const o = d.detail as { mensaje?: string; campo?: string }
+    msg = o.mensaje ?? ''
+    codigo = o.campo
+  }
+  if (!msg && Array.isArray(d?.detail)) msg = 'Hay datos inválidos en el formulario.'
+  throw new ApiError(msg || `Error ${r.status}`, r.status, codigo)
+}
+
+export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   let r: Response
   try {
-    r = await fetch(`/api${path}`, { method: init.method ?? 'GET', headers, body: init.body !== undefined ? JSON.stringify(init.body) : undefined })
+    r = await fetch(`/api${path}`, { method: init.method ?? 'GET', headers: cabeceras(init.body !== undefined), body: init.body !== undefined ? JSON.stringify(init.body) : undefined })
   } catch {
     throw new ApiError('No hay conexión con el servidor del CRM.', 0)
   }
   if (r.status === 204) return undefined as T
-  let data: unknown = null
-  try { data = await r.json() } catch { /* cuerpo vacío */ }
-  if (!r.ok) {
-    const d = data as { detail?: unknown; codigo?: string } | null
-    let msg = typeof d?.detail === 'string' ? d.detail : ''
-    if (!msg && Array.isArray(d?.detail)) msg = 'Hay datos inválidos en el formulario.'
-    throw new ApiError(msg || `Error ${r.status}`, r.status, d?.codigo)
-  }
-  return data as T
+  if (!r.ok) return fallo(r)
+  try { return (await r.json()) as T } catch { return undefined as T }
+}
+
+/** Descarga un archivo de la API (respeta la clave y el usuario). */
+export async function descargar(path: string, nombre: string): Promise<void> {
+  let r: Response
+  try { r = await fetch(`/api${path}`, { headers: cabeceras(false) }) } catch { throw new ApiError('No hay conexión con el servidor del CRM.', 0) }
+  if (!r.ok) return fallo(r)
+  const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = nombre; a.click(); URL.revokeObjectURL(a.href)
 }
 
 export const useGet = <T,>(path: string, opts: { enabled?: boolean; stale?: number } = {}) =>

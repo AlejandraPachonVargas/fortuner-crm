@@ -46,6 +46,18 @@ class Settings(BaseSettings):
     ads_fetch_size: int = Field(20_000, alias="ADS_FETCH_SIZE")
     ads_page_size: int = Field(20_000, alias="ADS_PAGE_SIZE")
 
+    # --- Clientes 360°: diccionario propio del CRM y catálogos de GANAPTOS ----------
+    # Diccionario del CRM (tablas CRM_*). Lo crea `crm clientes instalar`; nunca se mezcla con PUBLIDATA.
+    ads_crm_directory: str = Field("", alias="ADS_CRM_DIRECTORY")
+    ads_crm_user: str = Field("AdsSys", alias="ADS_CRM_USER")
+    ads_crm_password: str = Field("", alias="ADS_CRM_PASSWORD")
+    # Carpeta de tablas libres de GANAPTOS (GANMASCOTA, GANPROFE, GANAUTOS, GANBARRIO, CIUDAD, DPTOS). Solo lectura.
+    ads_catalogos_directory: str = Field("", alias="ADS_CATALOGOS_DIRECTORY")
+    # Interruptor maestro: sin él, Clientes 360° es de solo lectura aunque todo lo demás esté configurado.
+    clientes_escritura: bool = Field(False, alias="CRM_CLIENTES_ESCRITURA")
+    clientes_refresco_min: int = Field(15, alias="CRM_CLIENTES_REFRESCO_MIN")
+    clientes_sucursal_alta: str = Field("", alias="CRM_CLIENTES_SUCURSAL_ALTA")
+
     # --- IA (API compatible con OpenAI: DeepSeek por defecto) -------------------
     llm_api_key: str = Field("", alias="LLM_API_KEY")
     deepseek_api_key: str = Field("", alias="DEEPSEEK_API_KEY")

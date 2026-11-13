@@ -24,14 +24,22 @@ ORDER BY codigo, nombre;
 -- Se excluyen: líneas anuladas (IFNULO = 'X'), recibos de caja (factura con prefijo R: abonos, no son ventas)
 -- y productos que no son venta (tarjeta regalo). La cédula 222222222222 u otra que no exista en POSCLI es
 -- «consumidor final»: cliente_id queda NULL (se vende, pero no se puede segmentar).
+-- IFCLIENTE trae la CÉDULA del cliente o el NÚMERO DE TARJETA Gana Mercaldas (CODCLI): se resuelven ambos a la cédula.
+-- (Antes solo se cruzaba por cédula y se perdía ~23 % de la venta con cliente identificado.)
 CREATE OR REPLACE TABLE venta AS
-WITH cli AS (SELECT DISTINCT clean(CEDCLI) AS cedula FROM read_parquet('{staging}/poscli/*.parquet') WHERE clean(CEDCLI) IS NOT NULL)
+-- Registros genéricos del POS (CONSUMIDOR FINAL, documentos 2222222222, 0000000…) NO son personas: nunca reciben ventas.
+WITH pos AS (SELECT clean(CODCLI) AS codigo, clean(CEDCLI) AS cedula FROM read_parquet('{staging}/poscli/*.parquet')
+             WHERE clean(CEDCLI) IS NOT NULL
+               AND NOT (length(clean(CEDCLI)) >= 5 AND replace(clean(CEDCLI), left(clean(CEDCLI), 1), '') = '')
+               AND COALESCE(UPPER(clean(NOMCLI)), '') NOT LIKE '%CONSUMIDOR%FINAL%'),
+cli AS (SELECT DISTINCT cedula FROM pos),
+tarjeta AS (SELECT codigo, MIN(cedula) AS cedula FROM pos WHERE codigo IS NOT NULL GROUP BY codigo HAVING COUNT(DISTINCT cedula) = 1)
 SELECT clean(d.IFFACT)                                   AS factura,
        TRY_CAST(TRY_CAST(d.IFSUCUR AS DOUBLE) AS INTEGER) AS sucursal_id,
        d.IFFECHA::DATE                                   AS fecha,
        TRY_CAST(SUBSTR(clean(d.IFHORA), 1, 2) AS INTEGER) AS hora,
        clean(d.IFARTIC)                                  AS producto_id,
-       c.cedula                                          AS cliente_id,
+       COALESCE(c.cedula, t.cedula)                      AS cliente_id,
        num(d.IFCANT)::DOUBLE                             AS cantidad,
        num(d.IFVLRNET)::DOUBLE                           AS venta_neta,
        num(d.IFVLRBRU)::DOUBLE                           AS venta_bruta,
@@ -43,6 +51,7 @@ SELECT clean(d.IFFACT)                                   AS factura,
        clean(d.IFSECCION)                                AS seccion_id
 FROM read_parquet('{staging}/fadite/*.parquet', union_by_name = true) d
 LEFT JOIN cli c ON c.cedula = clean(d.IFCLIENTE)
+LEFT JOIN tarjeta t ON t.codigo = clean(d.IFCLIENTE)
 WHERE d.IFFECHA IS NOT NULL
   AND COALESCE(UPPER(clean(d.IFNULO)), '') <> 'X'
   AND NOT starts_with(UPPER(COALESCE(clean(d.IFFACT), '')), 'R')
@@ -115,6 +124,8 @@ WITH base AS (
            clean(BLOQUE) AS bloqueado
     FROM read_parquet('{staging}/poscli/*.parquet')
     WHERE clean(CEDCLI) IS NOT NULL
+      AND NOT (length(clean(CEDCLI)) >= 5 AND replace(clean(CEDCLI), left(clean(CEDCLI), 1), '') = '')   -- 2222222222, 0000000…
+      AND COALESCE(UPPER(clean(NOMCLI)), '') NOT LIKE '%CONSUMIDOR%FINAL%'
 ), uno AS (
     SELECT DISTINCT ON (cliente_id) * FROM base ORDER BY cliente_id, (email IS NOT NULL) DESC, codigo
 )
@@ -123,7 +134,8 @@ SELECT cliente_id, codigo, nombre, email, ciudad, barrio, sexo,
             THEN date_diff('year', fecha_nacimiento, DATE '{hoy}') END AS edad,
        -- celular colombiano: 10 dígitos que empiezan por 3 (con o sin prefijo 57)
        CASE WHEN regexp_matches(tel, '^(57)?3[0-9]{{9}}$') THEN right(tel, 10) END AS celular,
-       regexp_matches(COALESCE(email, ''), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{{2,}}$') AS email_valido,
+       regexp_matches(COALESCE(email, ''), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{{2,}}$')
+         AND NOT starts_with(lower(COALESCE(email, '')), 'facturaelectronica') AS email_valido,   -- correo genérico de factura electrónica
        -- INFOLEY = aceptó el tratamiento de datos (Ley 1581). NULL = sin registro: NO se asume consentimiento.
        CASE WHEN autoriza_raw IS NULL THEN NULL ELSE to_bool(autoriza_raw) END AS autoriza_datos,
        club_vino, club_salud, club_mascotas, club_parrilla,

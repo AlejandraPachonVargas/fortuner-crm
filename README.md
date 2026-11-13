@@ -46,7 +46,8 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 | Campañas · programar publicación + grupo de control + calidad del mensaje | ✅ Listo (**simulada**) | Planificador interno cada 30 s; estado *programada* en el historial |
 | Difusión real (WhatsApp / SMS / correo) | ⏳ Pendiente | Solo recomendaciones por ahora |
 | Medición de resultados / modelo supervisado | ⏳ Pendiente | Requiere difusión real para tener respuestas |
-| Clientes 360°, automatizaciones | ⏳ Pendiente | Aparecen en el menú como «Próximamente» |
+| Clientes 360° (gestor de clientes) | ✅ Conectado a ADVANTAGE (copia de prueba) | Lee y edita `POSCLI`; tablas propias `CRM_*` en un diccionario aparte; catálogos de GANAPTOS. Ver [§9.1](#91-clientes-360-gestor-de-clientes) y [`docs/clientes-360-arquitectura.md`](docs/clientes-360-arquitectura.md) |
+| Automatizaciones | ⏳ Pendiente | Aparece en el menú como «Próximamente» |
 
 ---
 
@@ -174,6 +175,9 @@ Comandos útiles: `crm probar-ads` · `crm etl [--full] [--meses N]` · `crm mod
 
 ## 6. Despliegue en el servidor Windows
 
+> **Guía paso a paso con comandos de Git Bash (incluye Clientes 360° y la verificación `crm clientes verificar`):
+> [`docs/despliegue-servidor.md`](docs/despliegue-servidor.md).** Instalación en un comando: `bash scripts/instalar.sh`.
+
 1. Copiar/clonar el repositorio (p. ej. `D:\fortuner-crm`) y ejecutar `scripts\instalar.ps1`.
 2. En `.env`: `CRM_ENV=production` (**obliga** a definir `CRM_API_KEY` y `CRM_ADMIN_KEY`; sin ellas el servidor no arranca),
    `ADS_DATA_DIRECTORY=\\SERVIDOR_ERP:2000\C$\ADD_FORTUNER\PUBLIDATA.add` (o la ruta local), `CRM_HOST=127.0.0.1`.
@@ -290,6 +294,54 @@ Ruta: `/campanas`. Estilo visual idéntico a *fortuner-dashboards* (menú azul m
 - **Calidad del mensaje** (`frontend/src/lib/calidad.ts`): opción de baja, SMS en un solo mensaje, asunto ≤ 60 caracteres, texto de vista previa, asunto sin mayúsculas sostenidas, uso de `{nombre}`,
   oferta concreta y, si hay licor/tabaco, leyenda sanitaria («El exceso de alcohol es perjudicial para la salud», Ley 30 de 1986; **confirmar con asesor jurídico**). Son recomendaciones: no bloquean.
 - **Migración automática**: la base SQLite existente se actualiza sola al arrancar (el `CHECK` del estado se reconstruye de forma atómica conservando todas las campañas; prueba incluida).
+
+---
+
+## 9.1 Clientes 360° (gestor de clientes)
+
+Ruta: `/clientes`. **Estado: conectado a ADVANTAGE (copia de prueba `D:\ADD_FORTUNER`).** Lee y edita los 146.371 clientes de `POSCLI`, guarda
+lo nuevo en tablas propias `CRM_*` (diccionario `D:\ADD_FORTUNER\CRM\CRM_FORTUNER.add`) y usa los catálogos de GANAPTOS en solo lectura.
+Explicación para la empresa: [`docs/clientes-360-arquitectura.md`](docs/clientes-360-arquitectura.md) · análisis de tablas: [`docs/analisis-db-clientes.md`](docs/analisis-db-clientes.md).
+
+**Cómo está construido**
+| Pieza | Archivo | Qué hace |
+|---|---|---|
+| Conexiones | `backend/crm/modules/clientes/conexion.py` | ERP (`PUBLIDATA`), CRM (diccionario propio) y catálogos (tablas libres de GANAPTOS). Candado único de escritura. |
+| Mapeo | `mapeo.py` | `POSCLI` ↔ ficha: lista blanca de columnas editables con su longitud real, llaves protegidas, fechas `AAAAMMDD`/`MMDD`, nombres en mayúsculas y `NOMCLI` recalculado. |
+| Instalador | `esquema.py` · `crm clientes instalar` / `crm clientes estado` | Crea el diccionario del CRM **en el servidor donde corre** (versión correcta de Advantage), las 9 tablas `CRM_*` y la migración inicial desde `POSCLI` (clubes, mascotas, vehículos). Idempotente. |
+| Índice | `indice.py` | Carga `POSCLI` + `CRM_*` + métricas de compra en DuckDB en memoria (~15–20 s) para buscar, filtrar y paginar 146 mil clientes en milisegundos. Se relee cada `CRM_CLIENTES_REFRESCO_MIN` y, por cliente, tras cada cambio. |
+| Operaciones | `servicio.py` | Crear, editar (con versión optimista), desactivar, anonimizar, eliminar (solo sin movimiento), fusionar, mascotas, vehículos, clubes, notas, masivos e importación. Toda escritura: releer → comparar → auditar → `UPDATE … WHERE ROWID AND CODCLI` (exactamente 1 fila) → marcar auditoría. Sincroniza las banderas de `POSCLI` que usa la caja. |
+| Consultas | `consultas.py` | Lista, KPI, calidad, duplicados (documento, celular, correo, nombre + nacimiento) y exclusión de inactivos en Campañas. |
+| API | `router.py` · `/api/clientes/...` | Permisos del servidor: clave de uso → mercadeo; clave admin → administrador; `CRM_CLIENTES_ESCRITURA=false` → solo lectura. |
+| Interfaz | `frontend/src/pages/clientes/` | Las mismas pantallas de la fase visual, ahora contra la API (`datos.ts` son hooks de TanStack Query). |
+
+**Variables nuevas en `.env`**: `ADS_CRM_DIRECTORY`, `ADS_CRM_USER`, `ADS_CRM_PASSWORD` (10 a 20 caracteres, límite de Advantage), `ADS_CATALOGOS_DIRECTORY`,
+`CRM_CLIENTES_ESCRITURA` (interruptor maestro), `CRM_CLIENTES_REFRESCO_MIN`, `CRM_CLIENTES_SUCURSAL_ALTA` (opcional).
+
+**Reglas acordadas con los creadores de la base (se respetan desde el diseño)**
+1. **Nunca se cambia la estructura** de las tablas del ERP (ni columnas ni tipos): solo se crean, leen, editan y eliminan **registros**.
+2. **Integridad primero**: la llave del cliente (documento) **no se edita**; un cliente con compras **no se elimina físicamente** (se desactiva o se anonimiza); toda edición valida y queda en la auditoría.
+3. Lo que el ERP no tenga (mascotas, afiliaciones, vehículos, notas…) vive en **tablas nuevas enlazadas al cliente** (`POSCLI`), sin tocar las existentes.
+4. En producción las escrituras irán **directamente a la base original**; por eso esta fase se prueba con la copia y se analiza el diccionario antes de conectar.
+
+**Pantallas**
+| Pantalla | Qué hace |
+|---|---|
+| Lista (`/clientes`) | KPIs (activos, % que autoriza datos, % con celular/correo válido, ficha promedio), búsqueda (nombre, documento, celular, correo, mascota), **vistas rápidas** (cumpleaños de la semana, sin celular, sin consentimiento, valiosos con ficha incompleta, en riesgo, con mascotas) y **vistas guardadas propias**, filtros combinables, orden, paginación, **acciones masivas** (asignar club, etiquetar, exportar selección, desactivar), **exportar CSV** e **importar CSV** (valida primero, no pisa datos) |
+| Ficha (`/clientes/:id`) | Cabecera con segmento, consentimiento y anillo de completitud. Pestañas: **Resumen** (KPIs, próxima recompra, canales autorizados), **Datos** (formulario completo con validación en vivo), **Mascotas**, **Afiliaciones**, **Vehículos**, **Compras** (solo lectura, vendrá de `FADITE`), **Actividad** (línea de tiempo con compras, campañas, cambios, notas y tareas) |
+| Nuevo cliente (`/clientes/nuevo`) | Mismo formulario: identificación, contacto (celular colombiano y correo validados), ubicación en cascada departamento › ciudad › barrio, consentimiento (Ley 1581), etiquetas y observaciones |
+| Baja | Tres caminos con la **regla de integridad visible**: *desactivar* (reversible), *anonimizar* (supresión; conserva llave y ventas) y *eliminar* (solo si nada lo referencia). Anonimizar/eliminar piden escribir el documento |
+| Calidad de datos (`/clientes/calidad`) | Puntaje de salud de la base, 6 problemas con conteo y atajo a la lista, **cola de trabajo** con edición rápida de celular/correo en los clientes que más venden, y **posibles duplicados** (mismo celular, correo, o nombre + nacimiento) con asistente de **fusión** campo a campo |
+| Afiliaciones (`/clientes/afiliaciones`) | CRUD de clubes (nombre, descripción, beneficios, vigencia, color, activo). Un club con socios no se elimina, se desactiva |
+| Roles de prueba | Selector *Probar como*: **Administrador** (todo), **Mercadeo** (edita, no elimina/importa/fusiona) y **Solo lectura** (contacto enmascarado). Es una demostración: los roles reales llegarán con el login corporativo |
+
+**Modelo (conceptual, por mapear al diccionario)**: `cliente 1—N mascota`, `cliente 1—N vehículo`, `cliente 1—N nota`, `cliente N—M afiliación` mediante `cliente_afiliación`
+(ingreso, vencimiento, carné, estado) y `cambio` (auditoría campo a campo). Catálogos: departamentos, ciudades, barrios, profesiones, tipos/razas de mascota, marcas de vehículo
+(equivalentes a `GANPROFE`, `GANAUTOS`, `GANMASCOTA`, `CIUDAD`, `DPTOS`, `GANBARRIO`).
+
+**Análisis del diccionario (2026-11-13)** → [`docs/analisis-db-clientes.md`](docs/analisis-db-clientes.md): `POSCLI` columna por columna (qué se lee, qué se edita, qué nunca se toca),
+relaciones implícitas con ventas (`FADITE.IFCLIENTE` trae **cédula o tarjeta**), catálogos `GAN*` ausentes en la copia, diseño de las tablas nuevas `CRM*`,
+mecanismo de escritura segura y preguntas abiertas para los creadores de la base.
 
 ---
 
@@ -412,8 +464,8 @@ Hoy «Publicar» **no envía nada**. Para pasar a envío real, la propuesta (sin
 ## 14. Pruebas
 
 ```powershell
-cd backend ; ..\.venv\Scripts\python -m pytest -q        # 50 pruebas
-cd frontend ; npm test ; npm run build                  # 17 pruebas + tsc (tipos estrictos) + build
+cd backend ; ..\.venv\Scripts\python -m pytest -q        # 67 pruebas
+cd frontend ; npm test ; npm run build                  # 25 pruebas + tsc (tipos estrictos) + build
 ```
 
 Cubren: calendario y fechas móviles, conteo de SMS (GSM-7/Unicode), normalización y saneamiento de filtros, ausencia de interpolación SQL, exclusión de menores,
@@ -508,3 +560,6 @@ cliente no es un recurso ilimitado: la saturación destruye la base.
 | 2026-11-11 | **Auditoría de extremo a extremo.** Error encontrado y corregido: al publicar, el servidor leía mal los filtros guardados (`segmentacion.filtros`) y publicó a toda la base en vez de respetar tope de personas, objetivo y exclusión de contactados recientes. Ahora `filtros_de_campana()` reconstruye exactamente lo previsualizado (con prueba de regresión) y se verificó que dos campañas seguidas **no se solapan** (0 destinatarios repetidos). Además: CSP sin scripts en línea; productos sin precio ($0 en el ERP) se avisan y no se le dan a la IA; curva de concentración con potencial ∝ puntaje³. |
 | 2026-11-11 | **Módulo Campañas (victoria temprana #1):** historial, selección de productos (IA por temporada + inventario + filtros), redacción por canal (IA o manual), segmentación multi-técnica con IA, revisión y publicación simulada. 31 pruebas automáticas. Scripts de instalación/servicio para Windows. |
 | 2026-11-12 | **Iteración 2.** *Corrección:* al marcar filtros del paso Audiencia la pantalla «se salía» (el input oculto de cada casilla, `sr-only`/`position:absolute`, quedaba anclado fuera del panel con scroll y, al enfocarlo, el navegador desplazaba la página entera). Ahora cada casilla es `relative`, `html/body` usan `overflow: clip` y el panel de resultados tiene su propio scroll. *Nuevo:* vista previa realista (WhatsApp, SMS, correo); programación de publicaciones con planificador, horario sugerido y avisos de horario; grupo de control; estado *programada* en el historial (con migración automática de la base); lista de calidad/cumplimiento; estrategias de audiencia listas; análisis de marketing y propuestas (§16). También se corrigió que, tras publicar un borrador existente, aparecía «no se puede editar» en lugar de la pantalla de confirmación. |
+| 2026-11-13 | **Clientes 360° (fase visual).** Gestor de clientes completo sobre datos de demostración: lista con vistas/filtros/acciones masivas/importar/exportar, ficha con 7 pestañas, formulario con validación, baja con regla de integridad (desactivar/anonimizar/eliminar), calidad de datos con cola de trabajo y fusión de duplicados, catálogo de afiliaciones y roles de prueba. 12 pruebas nuevas de validadores y reglas de integridad. Sin conexión a ADVANTAGE: pendiente del análisis del diccionario (§9.1). |
+| 2026-11-13 | **Análisis del diccionario** (`docs/analisis-db-clientes.md`): 114 tablas, `POSCLI` columna por columna, relaciones implícitas, riesgos (`Actu_diccionario.sql` borra columnas de `POSCLI`; `TIDGON` desincronizada). |
+| 2026-11-13 | **Clientes 360° conectado a ADVANTAGE.** Diccionario propio del CRM con 9 tablas `CRM_*` (instalador idempotente), migración inicial (92.045 afiliaciones, 38.809 mascotas, 24.998 vehículos), catálogos de GANAPTOS, índice en memoria, API `/api/clientes` con permisos y auditoría completa, interfaz conectada. *Correcciones en Campañas:* las ventas con **número de tarjeta** ahora se atribuyen al cliente (antes se perdía ~23 % de la venta con cliente); los registros genéricos del POS (CONSUMIDOR FINAL, 2222222222) y los correos genéricos de factura electrónica ya no cuentan como clientes ni como contactables; los clientes inactivos o anonimizados en el CRM no entran en campañas. Respaldo previo en `D:\RESPALDOS_CRM`. 17 pruebas nuevas de backend; prueba de punta a punta sobre la copia sin tocar clientes reales. |

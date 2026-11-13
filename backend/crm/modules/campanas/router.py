@@ -250,6 +250,9 @@ def _contexto_segmentacion(filtros: dict, productos_ids: list[str]) -> tuple[lis
     restringidos = seg.productos_restringidos(productos)
     dias = int(filtros.get("excluir_contactados_dias") or 0) if str(filtros.get("excluir_contactados_dias") or "0").isdigit() else 0
     excluidos = get_store().contactados_recientes(dias) if dias else set()
+    # Clientes que el CRM marcó inactivos o anonimizados (Clientes 360°) nunca entran a una campaña.
+    from ..clientes.consultas import inactivos_para_campanas
+    excluidos = excluidos | inactivos_para_campanas()
     return productos, restringidos, excluidos
 
 
