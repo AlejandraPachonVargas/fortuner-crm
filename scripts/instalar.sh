@@ -33,7 +33,16 @@ if [ ! -f .env ]; then
   echo "   Se creó .env con claves nuevas (uso, administración y contraseña del diccionario del CRM)."
   echo "   COMPLETE: ADS_DATA_DIRECTORY, ADS_USER, ADS_PASSWORD, ADS_CRM_DIRECTORY, ADS_CATALOGOS_DIRECTORY y DEEPSEEK_API_KEY."
 else
-  echo "   .env ya existe: no se modifica."
+  echo "   .env ya existe: no se cambia nada de lo que tenga valor."
+  # Si las claves de acceso están vacías (o faltan), se generan. La contraseña del diccionario NO se toca aquí:
+  # si el diccionario ya existe, cambiarla lo dejaría inaccesible.
+  for var in CRM_API_KEY CRM_ADMIN_KEY; do
+    if ! grep -qE "^${var}=[^[:space:]]+" .env; then
+      k=$("$PY" -c "import secrets; print(secrets.token_urlsafe(32))")
+      if grep -qE "^${var}=" .env; then sed -i "s|^${var}=.*|${var}=$k|" .env; else printf '\n%s=%s\n' "$var" "$k" >> .env; fi
+      echo "   Se generó $var (estaba vacía)."
+    fi
+  done
 fi
 
 echo "== 4/4 Pruebas automáticas"
