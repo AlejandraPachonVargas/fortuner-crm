@@ -10,7 +10,7 @@ export default function ClienteNuevo() {
   return (
     <div className="mx-auto max-w-[1300px] space-y-5">
       <button type="button" onClick={() => nav('/clientes')} className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-3 hover:text-ink"><ArrowLeft size={15} />Clientes</button>
-      <div><h1 className="text-[22px] font-extrabold text-ink">Nuevo cliente</h1><p className="text-[13px] text-ink-3">Se crea directamente en el ERP (POSCLI) con su tarjeta Gana Mercaldas. Mientras más completa la ficha, más campañas podrás dirigirle.</p></div>
+      <div><h1 className="text-[24px] font-semibold text-ink">Nuevo cliente</h1><p className="text-[13px] text-ink-3">Se crea directamente en el ERP (POSCLI) con su tarjeta Gana Mercaldas. Mientras más completa la ficha, más campañas podrás dirigirle.</p></div>
       <Notice tone="info">Antes de crear se verifica en el ERP que no exista otro cliente con el mismo documento ni con la misma tarjeta.</Notice>
       <FormCliente inicial={VACIO} modo="crear" onCancelar={() => nav('/clientes')}
         onGuardar={async (d) => {

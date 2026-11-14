@@ -41,8 +41,8 @@ export default function Historial() {
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[20px] font-bold text-ink">Historial de campañas</h1>
+        <div className="min-w-0 flex-1 basis-72">
+          <h1 className="text-[24px] font-semibold text-ink">Historial de campañas</h1>
           <p className="text-[13px] text-ink-3">Cada campaña elige productos, redacta el mensaje por canal y define a quién se le envía.</p>
         </div>
         <Btn variant="accent" icon={<Plus size={16} />} onClick={() => nav('/campanas/nueva')}>Crear campaña</Btn>

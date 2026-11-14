@@ -38,7 +38,7 @@ export default function ClienteFicha() {
       <div className="card flex flex-wrap items-center gap-4 p-5">
         <Avatar nombre={nombreCompleto(c)} size={64} anonimo={anon} />
         <div className="min-w-0 flex-1 basis-64">
-          <h1 className="flex items-center gap-2 truncate text-[22px] font-extrabold text-ink">{nombreCompleto(c)}{q.isFetching && <Spinner size={14} />}</h1>
+          <h1 className="flex items-center gap-2 truncate text-[24px] font-semibold text-ink">{nombreCompleto(c)}{q.isFetching && <Spinner size={14} />}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] text-ink-3">
             <span>{c.tipoDoc} {c.documento}</span>
             <span className="inline-flex items-center gap-1"><CreditCard size={13} />Tarjeta {c.tarjeta}</span>

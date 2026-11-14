@@ -24,7 +24,7 @@ export default function Calidad() {
   return (
     <div className="mx-auto max-w-[1300px]">
       <NavClientes />
-      <div className="mb-5"><h1 className="text-[22px] font-extrabold text-ink">Calidad de datos</h1><p className="text-[13px] text-ink-3">Una base limpia vende más: cada celular o correo que se completa es un cliente al que se le puede escribir. Los cambios se guardan en el ERP.</p></div>
+      <div className="mb-5"><h1 className="text-[24px] font-semibold text-ink">Calidad de datos</h1><p className="text-[13px] text-ink-3">Una base limpia vende más: cada celular o correo que se completa es un cliente al que se le puede escribir. Los cambios se guardan en el ERP.</p></div>
       {q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} /> : !d ? <Skeleton h={220} /> : (
         <div className="mb-5 grid items-stretch gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
           <Card icon={<ShieldCheck size={18} />} title="Salud de la base">

@@ -241,7 +241,7 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
         <Card title="Audiencia resultante" actions={busy ? <Badge tone="warn">Calculando…</Badge> : undefined}>
           {!r ? <Skeleton h={180} /> : (
             <div className={clsx('space-y-4', busy && 'is-fetching')}>
-              <div className="rounded-2xl bg-gradient-to-br from-[#0b1d36] to-[#1c5cab] p-5 text-white">
+              <div className="rounded-[18px] p-5 text-white" style={{ background: "var(--fx-masthead)" }}>
                 <div className="text-[11.5px] font-semibold tracking-wider uppercase opacity-75">Personas a contactar</div>
                 <div className="mt-1 text-[40px] leading-none font-extrabold tnum">{fmtNum(r.audiencia)}</div>
                 <div className="mt-1.5 text-[12.5px] opacity-80">de {fmtNum(r.base_clientes)} clientes con compras · {fmtNum(r.audiencia_candidata)} cumplen los filtros{r.audiencia_candidata > r.audiencia ? ' (antes del tope)' : ''}</div>

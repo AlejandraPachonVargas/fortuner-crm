@@ -9,7 +9,7 @@ import { op, useAfiliaciones, useMutar } from './datos'
 import NavClientes from './NavClientes'
 import type { Afiliacion } from './modelo'
 
-const COLORES = ['#8b1e3f', '#1f9d6b', '#e08a00', '#c2410c', '#6b4226', '#1c5cab', '#7c3aed', '#be185d', '#0e7490', '#64748b']
+const COLORES = ['#0F70FC', '#21CC93', '#1FCEC4', '#33B1FF', '#5B5FF7', '#003760', '#8b1e3f', '#e08a00', '#c2410c', '#6b4226', '#be185d', '#64748b']
 
 export default function Afiliaciones() {
   const nav = useNavigate()
@@ -37,8 +37,8 @@ export default function Afiliaciones() {
     <div className="mx-auto max-w-[1300px]">
       <NavClientes />
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1"><h1 className="text-[22px] font-extrabold text-ink">Afiliaciones y clubes</h1><p className="text-[13px] text-ink-3">Crea los clubes que quieras (tabla CRM_AFILIACION); cada cliente puede pertenecer a varios y las campañas pueden dirigirse a sus socios.</p></div>
-        {editar && <Btn variant="accent" icon={<Plus size={16} />} onClick={() => { setF({ color: COLORES[5], activa: true, vigenciaMeses: 12 }); setErr('') }}>Nuevo club</Btn>}
+        <div className="min-w-0 flex-1 basis-72"><h1 className="text-[24px] font-semibold text-ink">Afiliaciones y clubes</h1><p className="text-[13px] text-ink-3">Crea los clubes que quieras (tabla CRM_AFILIACION); cada cliente puede pertenecer a varios y las campañas pueden dirigirse a sus socios.</p></div>
+        {editar && <Btn variant="accent" icon={<Plus size={16} />} onClick={() => { setF({ color: COLORES[0], activa: true, vigenciaMeses: 12 }); setErr('') }}>Nuevo club</Btn>}
       </div>
       {msg && <div className="mb-4"><Notice tone="bad">{msg}</Notice></div>}
       {q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} /> : !q.data ? <Skeleton h={260} /> : q.data.length === 0 ? <Card><Empty text="Aún no hay clubes" /></Card> : (

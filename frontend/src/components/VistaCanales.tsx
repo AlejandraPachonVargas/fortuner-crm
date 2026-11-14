@@ -98,7 +98,7 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
       </div>
       {/* fila de la bandeja: lo primero que ve el cliente */}
       <div className="flex items-start gap-2.5 border-b border-[#dadce0] bg-white px-3 py-2.5">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#0b1d36] text-[13px] font-bold text-white">F</span>
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#003760] text-[13px] font-bold text-white">F</span>
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex items-baseline gap-2"><span className="flex-1 truncate text-[12.5px] font-bold">{EMPRESA}</span><span className="text-[10.5px] font-semibold text-[#202124]">{hora()}</span></div>
           <div className="truncate text-[12.5px] font-bold">{personalizar(asunto, nombre) || <i className="font-normal text-[#5f6368]">(sin asunto)</i>}</div>
@@ -109,11 +109,11 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
       <div className="bg-white p-3.5">
         <h3 className="text-[15px] leading-tight font-semibold">{personalizar(asunto, nombre) || '(sin asunto)'}</h3>
         <div className="mt-2 flex items-center gap-2 text-[11px] text-[#5f6368]">
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#0b1d36] text-[11px] font-bold text-white">F</span>
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-[#003760] text-[11px] font-bold text-white">F</span>
           <span className="leading-tight"><b className="text-[#202124]">{EMPRESA}</b><br />para {nombre}</span>
         </div>
         <div className="mt-3 overflow-hidden rounded-lg border border-[#e8eaed]">
-          <div className="bg-[#0b1d36] px-4 py-3.5 text-center"><span className="text-[17px] font-extrabold tracking-[0.25em] text-white">{EMPRESA.toUpperCase()}</span></div>
+          <div className="bg-[#003760] px-4 py-3.5 text-center"><span className="text-[17px] font-extrabold tracking-[0.25em] text-white">{EMPRESA.toUpperCase()}</span></div>
           <div className="space-y-2.5 px-4 py-4 text-[12.5px] leading-relaxed text-[#3c4043]">
             {parrafos.length ? parrafos.map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>) : <p className="text-[#80868b]">Aquí aparecerá el cuerpo del correo.</p>}
           </div>
@@ -123,12 +123,12 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
                 <div key={p.producto_id} className="rounded-lg border border-[#e8eaed] bg-[#f8f9fa] p-2.5">
                   <div className="line-clamp-2 min-h-[2.1em] text-[11.5px] leading-snug font-semibold text-[#202124]">{p.producto}</div>
                   <div className="mt-1 text-[10.5px] text-[#5f6368]">{p.marca}</div>
-                  {p.precio_venta > 0 && <div className="mt-1 text-[13px] font-extrabold text-[#1c5cab]">{fmtCop(p.precio_venta)}</div>}
+                  {p.precio_venta > 0 && <div className="mt-1 text-[13px] font-extrabold text-[#0F70FC]">{fmtCop(p.precio_venta)}</div>}
                 </div>
               ))}
             </div>
           )}
-          {parrafos.length > 0 && <div className="px-4 pb-4 text-center"><span className="inline-block rounded-full bg-[#1c5cab] px-5 py-2 text-[12.5px] font-bold text-white">Visítanos en la tienda</span></div>}
+          {parrafos.length > 0 && <div className="px-4 pb-4 text-center"><span className="inline-block rounded-full bg-[#0F70FC] px-5 py-2 text-[12.5px] font-bold text-white">Visítanos en la tienda</span></div>}
           <div className="border-t border-[#e8eaed] bg-[#f8f9fa] px-4 py-2.5 text-center text-[10px] leading-snug text-[#80868b]">
             Recibes este correo porque autorizaste el tratamiento de tus datos con {EMPRESA}. <u>Cancelar suscripción</u>
           </div>

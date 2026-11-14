@@ -30,8 +30,8 @@ export default function Detalle() {
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <Btn variant="ghost" icon={<ArrowLeft size={15} />} onClick={() => nav('/campanas')}>Historial</Btn>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[20px] font-bold text-ink">{c.nombre}</h1>
+        <div className="min-w-0 flex-1 basis-72">
+          <h1 className="truncate text-[24px] font-semibold text-ink">{c.nombre}</h1>
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-3">
             <Badge tone={c.estado === 'publicada' ? 'good' : c.estado === 'programada' ? 'brand' : 'warn'}>{c.estado === 'publicada' ? 'Publicada (simulada)' : c.estado === 'programada' ? `Programada · ${fmtProgramada(c.programada_para)}` : 'Borrador'}</Badge>
             <span>Creada {fmtFechaHora(c.creada)}</span>

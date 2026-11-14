@@ -18,7 +18,7 @@ type Canal = 'whatsapp' | 'sms' | 'email'
 
 const CANALES = [
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, hint: 'Alta apertura, admite emojis', tile: 'bg-[#dcf8e6] text-[#128c4a]' },
-  { id: 'sms', label: 'SMS', icon: MessageSquareText, hint: '160 caracteres por mensaje', tile: 'bg-[#e3eefc] text-[#1c5cab]' },
+  { id: 'sms', label: 'SMS', icon: MessageSquareText, hint: '160 caracteres por mensaje', tile: 'bg-[#e3eefc] text-[#0F70FC]' },
   { id: 'email', label: 'Correo', icon: Mail, hint: 'Asunto + cuerpo, el más económico', tile: 'bg-[#fdebd8] text-[#b45a0b]' },
 ] as const
 

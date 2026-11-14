@@ -103,7 +103,7 @@ export default function ClientesLista() {
     <div className="mx-auto max-w-[1400px]">
       <NavClientes />
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1"><h1 className="text-[22px] font-extrabold text-ink">Clientes</h1><p className="text-[13px] text-ink-3">Todos los clientes de ADVANTAGE (POSCLI) con sus compras, clubes y mascotas, en un solo lugar.</p></div>
+        <div className="min-w-0 flex-1 basis-72"><h1 className="text-[24px] font-semibold text-ink">Clientes</h1><p className="text-[13px] text-ink-3">Todos los clientes de ADVANTAGE (POSCLI) con sus compras, clubes y mascotas, en un solo lugar.</p></div>
         <Btn icon={exportando ? <Spinner size={14} /> : <Download size={15} />} disabled={exportando} onClick={() => void exportar()}>Exportar</Btn>
         {importar && <Btn icon={<Upload size={15} />} onClick={() => setImp(true)}>Importar</Btn>}
         {editar && <Btn variant="accent" icon={<Plus size={16} />} onClick={() => nav('/clientes/nuevo')}>Nuevo cliente</Btn>}

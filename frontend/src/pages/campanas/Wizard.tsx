@@ -125,7 +125,7 @@ export default function Wizard() {
       <div className="mx-auto max-w-2xl py-8">
         <div className="card p-8 text-center">
           <CheckCircle2 size={44} className="mx-auto text-good" />
-          <h1 className="mt-3 text-[20px] font-bold text-ink">{hecho.programada ? 'Campaña programada' : 'Campaña publicada (simulación)'}</h1>
+          <h1 className="mt-3 text-[24px] font-semibold text-ink">{hecho.programada ? 'Campaña programada' : 'Campaña publicada (simulación)'}</h1>
           <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-ink-2">
             {hecho.programada ? <>Se publicará el <b>{fmtProgramada(hecho.cuando)}</b> para </> : <>Se registró la campaña con </>}<b>{fmtNum(hecho.destinatarios)}</b> destinatarios y un costo estimado de <b>{fmtCop(hecho.costo)}</b>.
             {hecho.control > 0 && <> Además <b>{fmtNum(hecho.control)}</b> personas quedaron como grupo de control (sin envío) para medir el efecto real.</>}{' '}
