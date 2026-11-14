@@ -10,8 +10,9 @@ from crm.config import Settings
 
 
 def _cliente(monkeypatch, tmp_path, **env):
+    # Vacías (no solo borradas): así no se cuelan las claves del .env real de la máquina donde corren las pruebas.
     for k in ("CRM_API_KEY", "CRM_ADMIN_KEY"):
-        monkeypatch.delenv(k, raising=False)
+        monkeypatch.setenv(k, "")
     monkeypatch.setenv("CRM_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CRM_ENV", env.pop("CRM_ENV", "development"))
     for k, v in env.items():
