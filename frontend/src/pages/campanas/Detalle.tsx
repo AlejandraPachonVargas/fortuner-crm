@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge, Btn, ErrorBox, Notice, Skeleton } from '@/components/ui'
 import { api, useGet, type Campana } from '@/lib/api'
 import { fmtFechaHora, fmtNum } from '@/lib/format'
-import { fmtProgramada } from '@/lib/programacion'
+import { fmtProgramada, textoVigencia } from '@/lib/programacion'
 import ResumenCampana from './ResumenCampana'
 
 /** «Ver»: resumen de solo lectura de una campaña (borrador o publicada). */
@@ -24,6 +24,7 @@ export default function Detalle() {
   })
 
   if (isLoading) return <div className="mx-auto max-w-6xl space-y-3"><Skeleton h={60} /><Skeleton h={300} /></div>
+  const vig = c?.vigencia_desde && c.vigencia_hasta ? textoVigencia(c.vigencia_desde, c.vigencia_hasta) : null
   if (error || !c) return <div className="mx-auto max-w-3xl space-y-3"><ErrorBox error={error ?? new Error('Campaña no encontrada')} onRetry={() => void refetch()} /><Btn onClick={() => nav('/campanas')}>Volver</Btn></div>
 
   return (
@@ -36,6 +37,7 @@ export default function Detalle() {
             <Badge tone={c.estado === 'publicada' ? 'good' : c.estado === 'programada' ? 'brand' : 'warn'}>{c.estado === 'publicada' ? 'Publicada (simulada)' : c.estado === 'programada' ? `Programada · ${fmtProgramada(c.programada_para)}` : 'Borrador'}</Badge>
             <span>Creada {fmtFechaHora(c.creada)}</span>
             {c.publicada_en && <span>· Publicada {fmtFechaHora(c.publicada_en)}</span>}
+            {vig && <Badge tone="brand">Válida {vig}</Badge>}
           </div>
         </div>
         {c.estado === 'borrador'
@@ -49,7 +51,7 @@ export default function Detalle() {
         {(c.grupos?.control ?? 0) > 0 && <> y deja <b>{fmtNum(c.grupos?.control)}</b> como grupo de control sin envío</>}. Publicación simulada: no se enviará ningún mensaje real. Mientras tanto sus destinatarios quedan reservados para no saturarlos con otra campaña.</Notice>}
       {c.estado === 'publicada' && (c.grupos?.control ?? 0) > 0 && <Notice tone="info">Grupo de control: <b>{fmtNum(c.grupos?.control)}</b> personas ({c.control_pct}%) quedaron sin mensaje para poder medir el efecto real de la campaña.</Notice>}
       {c.estado === 'publicada' && <Notice tone="info">Publicación simulada: no se envió ningún mensaje real. La lista de destinatarios quedó registrada para no volver a contactarlos en campañas cercanas.</Notice>}
-      <ResumenCampana calidad={c.estado === 'borrador'} d={{ nombre: c.nombre, objetivo: c.objetivo, productos: c.productos, mensaje: c.mensaje, filtros: c.segmentacion?.filtros ?? {}, audiencia: c.audiencia, costo: c.costo_estimado }} />
+      <ResumenCampana calidad={c.estado === 'borrador'} d={{ nombre: c.nombre, objetivo: c.objetivo, productos: c.productos, mensaje: c.mensaje, filtros: c.segmentacion?.filtros ?? {}, audiencia: c.audiencia, costo: c.costo_estimado, vigencia: vig }} />
     </div>
   )
 }

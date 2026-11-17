@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Momento, Producto } from './api'
 import { revisarCalidad, puntajeCalidad } from './calidad'
-import { avisosHorario, errorFecha, fmtHora, proximoDia, sugerirMomento } from './programacion'
+import { avisosHorario, errorFecha, fmtHora, proximoDia, sugerirMomento, textoVigencia, vigencia } from './programacion'
 
 // Jueves 12 de noviembre de 2026, 10:00
 const AHORA = new Date(2026, 10, 12, 10, 0)
@@ -57,19 +57,19 @@ describe('calidad del mensaje', () => {
 
   it('marca como pendiente lo que falta y puntúa', () => {
     const c = revisarCalidad({ canales: ['sms'], textos: { sms: { texto: 'Hola con tildes ¡qué día! Llévalo YA por $50.000 en tienda' } } }, prod)
-    expect(c.find((x) => x.texto.includes('opción de baja'))!.ok).toBe(false)
+    expect(c.find((x) => x.texto.includes('vigencia'))!.ok).toBe(false)
     expect(c.find((x) => x.texto.includes('un solo mensaje'))!.ok).toBe(false)   // tildes → Unicode
     expect(puntajeCalidad(c)).toBeLessThan(60)
   })
 
   it('un SMS completo pasa todo', () => {
-    const c = revisarCalidad({ canales: ['sms'], textos: { sms: { texto: 'Hola {nombre}, 2x1 en ron $50.000 hoy. Responde NO para dejar de recibir' } } }, prod)
+    const c = revisarCalidad({ canales: ['sms'], textos: { sms: { texto: 'Hola {nombre}, 2x1 en ron $50.000. Valido {vigencia}' } } }, prod)
     expect(c.every((x) => x.ok)).toBe(true)
     expect(puntajeCalidad(c)).toBe(100)
   })
 
   it('exige la leyenda sanitaria cuando hay licor', () => {
-    const base = { canales: ['whatsapp'], textos: { whatsapp: { texto: 'Hola {nombre} ron $50.000. Responde NO para dejar de recibir' } } }
+    const base = { canales: ['whatsapp'], textos: { whatsapp: { texto: 'Hola {nombre} ron $50.000. Valido {vigencia}' } } }
     expect(revisarCalidad(base, prod, true).find((x) => x.texto.includes('Leyenda'))!.ok).toBe(false)
     const con = { ...base, textos: { whatsapp: { texto: base.textos.whatsapp.texto + ' El exceso de alcohol es perjudicial para la salud.' } } }
     expect(revisarCalidad(con, prod, true).find((x) => x.texto.includes('Leyenda'))!.ok).toBe(true)
@@ -79,5 +79,19 @@ describe('calidad del mensaje', () => {
     const c = revisarCalidad({ canales: ['email'], textos: { email: { asunto: 'GRAN OFERTA SOLO HOY EN LICORES', cuerpo: 'x' } } }, prod)
     expect(c.find((x) => x.texto.includes('sin gritar'))!.ok).toBe(false)
     expect(c.find((x) => x.texto.includes('vista previa'))!.ok).toBe(false)
+  })
+})
+
+describe('vigencia de la oferta', () => {
+  it('cuenta desde el lanzamiento con el último día incluido', () => {
+    expect(vigencia('2026-11-22', 3)).toEqual({ desde: '2026-11-22', hasta: '2026-11-24' })
+    expect(vigencia('2026-11-30', 3)).toEqual({ desde: '2026-11-30', hasta: '2026-12-02' })
+    expect(vigencia('2026-11-22', 1)).toEqual({ desde: '2026-11-22', hasta: '2026-11-22' })
+  })
+  it('se lee igual que en el servidor', () => {
+    expect(textoVigencia('2026-11-22', '2026-11-24')).toBe('del 22 al 24 de noviembre de 2026')
+    expect(textoVigencia('2026-11-30', '2026-12-02')).toBe('del 30 de noviembre al 2 de diciembre de 2026')
+    expect(textoVigencia('2026-12-30', '2027-01-01')).toBe('del 30 de diciembre de 2026 al 1 de enero de 2027')
+    expect(textoVigencia('2026-11-22', '2026-11-22')).toBe('solo el 22 de noviembre de 2026')
   })
 })

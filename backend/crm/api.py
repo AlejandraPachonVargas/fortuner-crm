@@ -26,11 +26,37 @@ log = logging.getLogger("crm.api")
 DIST = ROOT_DIR / "frontend" / "dist"
 
 
+def _depurar_vencidas(store) -> bool:
+    """Depura los destinatarios de las campañas programadas vencidas. False = no se pudo verificar (no ejecutar)."""
+    vencidas = store.vencidas()
+    if not vencidas:
+        return True
+    from .modules.campanas.router import depurar_programada
+    from .modules.clientes.consultas import restricciones_contacto
+    try:
+        r = restricciones_contacto()
+    except Exception as e:
+        log.warning("Campañas programadas en espera: no se pudo verificar el consentimiento contra el ERP (%s)", e)
+        return False
+    for c in vencidas:
+        filas = store.destinatarios(c["id"])
+        nuevas, quitados = depurar_programada(c, filas, r)
+        if quitados:
+            store.depurar_destinatarios(c["id"], nuevas, quitados, "planificador")
+            log.info("Campaña %s: %s destinatario(s) retirados antes de ejecutar", c["id"], quitados)
+    return True
+
+
 async def _planificador(store) -> None:
     """Cada 30 s publica las campañas programadas cuya hora llegó. Al arrancar también publica las que vencieron mientras
     el servidor estaba apagado. Nunca debe morir por un error puntual."""
     while True:
         try:
+            # Antes de ejecutar, cada destinatario se vuelve a verificar contra el ERP. Si no se puede verificar (lista de
+            # clientes sin cargar), la campaña ESPERA al siguiente ciclo: nunca se ejecuta sin esa verificación.
+            if not await asyncio.to_thread(_depurar_vencidas, store):
+                await asyncio.sleep(30)
+                continue
             for cid in store.ejecutar_programadas():
                 log.info("Campaña programada publicada (simulado): %s", cid)
         except asyncio.CancelledError:

@@ -52,8 +52,11 @@ def construir_warehouse(s: Settings, staging: Path | None = None) -> Path:
     try:
         con.execute("SET temp_directory = ?", [str(s.data_dir / "tmp")])
         con.execute(sql)
+        # hoy = fecha calendario de la carga (edad, temporadas). corte = último día con ventas completas: contra él se
+        # mide la recencia. fecha_max = corte ("datos hasta"): no se anuncia un mes que solo trae líneas sueltas.
         con.execute("CREATE TABLE meta AS SELECT CAST(now() AS TIMESTAMP) AS construido, CAST(? AS DATE) AS hoy, "
-                    "(SELECT max(fecha) FROM venta) AS fecha_max, (SELECT min(fecha) FROM venta) AS fecha_min",
+                    "(SELECT fecha FROM corte_datos) AS corte, (SELECT fecha FROM corte_datos) AS fecha_max, "
+                    "(SELECT max(fecha) FROM venta) AS ultima_linea, (SELECT min(fecha) FROM venta) AS fecha_min",
                     [date.today().isoformat()])
         con.execute("CHECKPOINT")
     except BaseException:

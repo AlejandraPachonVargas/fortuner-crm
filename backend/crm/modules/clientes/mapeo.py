@@ -35,7 +35,8 @@ LONGITUD = {
     "CODMASCO": 2, "TMASCOTA": 20, "NOMMASCO": 50, "CODVEHI": 2, "TVEHI": 50,
 }
 NUMERICAS = {"FECHAN", "ANON", "HIJOS", "FECHAMOD"}
-LOGICAS = {"INFOLEY", "INFOTEX", "INFOELEC", "INFOWAS", "CLUBVINO", "CLUBAMAC", "CLUBPARRI", "CLUBSALUD",
+# BLOQUE: en Mercaldas un valor marcado (false) = «no enviar campañas». «No autoriza» lo marca y «Sí autoriza» lo vacía.
+LOGICAS = {"BLOQUE", "INFOLEY", "INFOTEX", "INFOELEC", "INFOWAS", "CLUBVINO", "CLUBAMAC", "CLUBPARRI", "CLUBSALUD",
            "CLUBMASCO", "MASCOTA", "TCARRO"}
 COLUMNAS_EDITABLES = frozenset(LONGITUD) | NUMERICAS | LOGICAS
 LLAVES = frozenset({"CODCLI", "CEDCLI"})
@@ -214,6 +215,8 @@ def ficha_desde_erp(r: dict, cat: "CatalogosLike | None" = None) -> dict:
         "puntos": float(r.get("PUNTOS") or 0), "ultimaAcumulacion": fecha_erp(r.get("ULTPTOS")),
         "empleado": bool(logico(r.get("MEMPLE"))),
         "bloqueado": bool(logico(r.get("BLOQUE"))) or bool(logico(r.get("BLOMOVI"))),
+        # Cualquier valor en BLOQUE (en el ERP solo existe false) excluye al cliente de Campañas; en 360° se sigue viendo.
+        "sinCampanas": r.get("BLOQUE") is not None,
         "observacionErp": obs,
     }
 
@@ -371,8 +374,10 @@ def columnas_para(cambios: dict, actual: dict, cat: CatalogosLike, hoy: date | N
         if v not in ("si", "no", "sin_registro"):
             raise DatoInvalido("consentimiento", "Consentimiento no válido.")
         out["INFOLEY"] = True if v == "si" else False if v == "no" else None
-        if v == "no":   # quien niega el tratamiento tampoco autoriza ningún canal
-            out.update({"INFOTEX": False, "INFOELEC": False, "INFOWAS": False})
+        if v == "no":   # quien niega el tratamiento tampoco autoriza ningún canal y queda bloqueado para campañas en el ERP
+            out.update({"INFOTEX": False, "INFOELEC": False, "INFOWAS": False, "BLOQUE": False})
+        elif v == "si":  # quien autoriza vuelve a poder recibir campañas: se borra el «false» de BLOQUE (queda vacío)
+            out["BLOQUE"] = None
     for campo, col in (("autorizaSms", "INFOTEX"), ("autorizaEmail", "INFOELEC"), ("autorizaWhatsapp", "INFOWAS")):
         if campo in cambios and not (cambios.get("consentimiento") == "no"):
             v = cambios[campo]
@@ -407,5 +412,5 @@ def columnas_anonimizar() -> dict:
         "EMAIL": "", "TELCELU": "", "TELCLI1": "", "TELCLI2": "", "DIRCLI1": "", "CODBARRIO": "", "BARRIO1": "",
         "FECHAN": 0, "ANON": 0, "EMPRESA": "", "ECIVIL": "", "HIJOS": None, "CODPROFE": "", "PROFESION1": "",
         "NOMMASCO": "", "TMASCOTA": "", "MASCOTA": False, "CODMASCO": "", "TCARRO": False, "CODVEHI": "", "TVEHI": "",
-        "INFOLEY": False, "INFOTEX": False, "INFOELEC": False, "INFOWAS": False, "SEXO": None,
+        "INFOLEY": False, "INFOTEX": False, "INFOELEC": False, "INFOWAS": False, "BLOQUE": False, "SEXO": None,
     }

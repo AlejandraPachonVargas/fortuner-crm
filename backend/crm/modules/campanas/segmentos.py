@@ -330,7 +330,33 @@ def _canales_de(d: dict, canales: list[str]) -> list[str]:
         out += [c for c in ("whatsapp", "sms") if c in canales]
     if d["email_valido"] and "email" in canales:
         out.append("email")
-    return out
+    bloqueados = d.get("canales_bloqueados")   # canales que el cliente NO autorizó en el ERP (INFOWAS/INFOTEX/INFOELEC)
+    return [c for c in out if c not in bloqueados] if bloqueados else out
+
+
+def aplicar_restricciones(cols: list[str], rows: list[tuple], f: dict, r, restringido: bool) -> tuple[list[str], list[tuple], dict]:
+    """Aplica al ranking lo que dice HOY el ERP (``clientes.consultas.RestriccionesContacto``), conservando el orden:
+
+    * fuera quien no está en POSCLI, está inactivo/anonimizado, marcó «No autoriza» o tiene BLOQUE (sin campañas);
+    * en modo estricto, fuera quien no tiene una ficha activa con «Sí autoriza»;
+    * si hay licor o cigarrillo, fuera los menores de 18 según la fecha de nacimiento del ERP;
+    * se quitan los canales que el cliente no autorizó, y fuera quien se queda sin ningún canal.
+    """
+    bloqueados = r.bloqueados_para(estricto=f["consentimiento"] == "estricto", restringido=restringido)
+    i_id = cols.index("cliente_id")
+    cols2 = [*cols, "canales_bloqueados"]
+    out, n_fuera, n_canal = [], 0, 0
+    for row in rows:
+        doc = row[i_id]
+        if doc not in r.conocidos or doc in bloqueados:
+            n_fuera += 1
+            continue
+        nueva = (*row, r.canales_bloqueados.get(doc))
+        if not _canales_de(dict(zip(cols2, nueva)), f["canales"]):
+            n_canal += 1
+            continue
+        out.append(nueva)
+    return cols2, out, {"excluidos_por_erp": n_fuera, "excluidos_por_canal": n_canal}
 
 
 def _motivos(d: dict) -> list[str]:
@@ -379,9 +405,7 @@ def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dic
             dias[int(r[i_dia])] += 1
         if i_fr is not None and r[i_fr]:
             franjas[r[i_fr]] += 1
-        cel, mail = r[ci["celular"]], r[ci["email_valido"]]
-        chs = (["whatsapp", "sms"] if cel else []) + (["email"] if mail else [])
-        chs = [c for c in chs if c in canales]
+        chs = _canales_de(_fila(cols, r), canales)
         for c in chs:
             por_canal[c] += 1
         # Costo: cada cliente con celular recibe por WhatsApp si está elegido y, si no, por SMS (no se duplica el gasto).

@@ -6,6 +6,7 @@ Todo filtro llega validado (listas blancas) y todo valor viaja como parámetro: 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from .indice import get_indice
@@ -187,11 +188,54 @@ def duplicados(descartados: set[str], limite: int = 150) -> dict:
     return {"total": total, "grupos": grupos, "clientes": detalle}
 
 
-def inactivos_para_campanas() -> set[str]:
-    """Documentos de clientes que el CRM marcó inactivos o anonimizados: Campañas no debe contactarlos."""
-    try:
-        # Solo documentos sin NINGUNA ficha activa (al fusionar, la ficha retirada queda inactiva pero la persona sigue activa).
-        return {r["documento"] for r in get_indice().query(
-            "SELECT documento FROM cli WHERE documento <> '' GROUP BY documento HAVING bool_and(estado <> 'activo')")}
-    except Exception:
-        return set()
+@dataclass(frozen=True)
+class RestriccionesContacto:
+    """Lo que Campañas debe respetar al armar y al ejecutar un envío, leído del ERP en vivo (índice de Clientes 360°).
+
+    El warehouse solo se actualiza con el ETL nocturno; el índice se refresca tras cada edición del CRM y cada
+    ``CRM_CLIENTES_REFRESCO_MIN`` minutos desde POSCLI. Por eso «No autoriza» se respeta desde el mismo momento en que se
+    guarda, aunque el warehouse todavía diga lo contrario.
+    """
+    conocidos: frozenset[str]            # documentos presentes hoy en POSCLI (quien no está, no se contacta)
+    excluir: frozenset[str]              # inactivos/anonimizados, «No autoriza» o BLOQUE marcado: nunca se contactan
+    sin_autorizacion: frozenset[str]     # ninguna ficha activa con «Sí autoriza» (aplica en modo de consentimiento estricto)
+    menores: frozenset[str]              # menores de 18 según la fecha de nacimiento del ERP (o fecha no confiable)
+    canales_bloqueados: dict[str, frozenset[str]] = field(default_factory=dict)   # documento → canales que no autorizó
+
+    def bloqueados_para(self, *, estricto: bool, restringido: bool) -> set[str]:
+        out = set(self.excluir)
+        if estricto:
+            out |= self.sin_autorizacion
+        if restringido:
+            out |= self.menores
+        return out
+
+
+def restricciones_contacto() -> RestriccionesContacto:
+    """Falla CERRADA: si la lista de clientes del ERP no está cargada lanza ``IndiceNoListo`` y no se envía nada."""
+    filas = get_indice().query("""
+        SELECT documento,
+               bool_and(estado <> 'activo')                                   AS inactivo,
+               bool_or(consentimiento = 'no')                                 AS niega,
+               bool_or(sin_campanas)                                          AS sin_campanas,
+               bool_or(consentimiento = 'si' AND estado = 'activo')           AS autoriza,
+               bool_or(autoriza_whatsapp IS FALSE)                            AS no_whatsapp,
+               bool_or(autoriza_sms IS FALSE)                                 AS no_sms,
+               bool_or(autoriza_email IS FALSE)                               AS no_email,
+               -- menor si ALGUNA ficha dice que no ha cumplido 18 (edad exacta, contada al día de hoy)
+               bool_or(nac IS NOT NULL AND nac > current_date - INTERVAL 18 YEAR)  AS menor
+        FROM cli WHERE documento <> '' GROUP BY documento""")
+    conocidos, excluir, sin_aut, menores, canales = set(), set(), set(), set(), {}
+    for r in filas:
+        d = r["documento"]
+        conocidos.add(d)
+        if r["inactivo"] or r["niega"] or r["sin_campanas"]:
+            excluir.add(d)
+        if not r["autoriza"]:
+            sin_aut.add(d)
+        if r["menor"]:
+            menores.add(d)
+        ch = frozenset(c for c, k in (("whatsapp", "no_whatsapp"), ("sms", "no_sms"), ("email", "no_email")) if r[k])
+        if ch:
+            canales[d] = ch
+    return RestriccionesContacto(frozenset(conocidos), frozenset(excluir), frozenset(sin_aut), frozenset(menores), canales)

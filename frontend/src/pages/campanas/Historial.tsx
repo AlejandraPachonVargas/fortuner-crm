@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Btn, Card, ConfirmDialog, Empty, ErrorBox, IconBtn, SearchInput, Skeleton, Stat } from '@/components/ui'
 import { api, useGet, type Campana } from '@/lib/api'
 import { CANAL_LABEL, fmtCop, fmtFechaHora, fmtNum } from '@/lib/format'
-import { fmtProgramada } from '@/lib/programacion'
+import { fmtProgramada, textoVigencia } from '@/lib/programacion'
 
 type Filtro = '' | 'borrador' | 'programada' | 'publicada'
 
@@ -84,6 +84,7 @@ export default function Historial() {
                     <Link to={c.estado === 'borrador' ? `/campanas/${c.id}/editar` : `/campanas/${c.id}`} className="block truncate text-[14px] font-bold text-ink hover:text-brand">{c.nombre}</Link>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-3">
                       <Badge tone={c.estado === 'publicada' ? 'good' : c.estado === 'programada' ? 'brand' : 'warn'}>{c.estado === 'publicada' ? 'Publicada (simulada)' : c.estado === 'programada' ? <><CalendarClock size={11} />Programada · {fmtProgramada(c.programada_para)}</> : `Borrador · paso ${c.paso} de 4`}</Badge>
+                      {c.estado !== 'borrador' && c.vigencia_desde && c.vigencia_hasta && <span className="text-[11.5px] text-ink-3">Válida {textoVigencia(c.vigencia_desde, c.vigencia_hasta)}</span>}
                       <span>{c.n_productos ?? 0} producto(s)</span>
                       {(c.mensaje.canales ?? []).length > 0 && <span>{(c.mensaje.canales ?? []).map((k) => CANAL_LABEL[k] ?? k).join(' · ')}</span>}
                       {c.audiencia > 0 && <span>{fmtNum(c.audiencia)} destinatarios</span>}

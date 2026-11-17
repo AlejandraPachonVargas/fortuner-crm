@@ -12,7 +12,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS {nombre} (
     publicada_en  TEXT,
     eliminada_en  TEXT,
     programada_para TEXT,
-    control_pct   INTEGER NOT NULL DEFAULT 0
+    control_pct   INTEGER NOT NULL DEFAULT 0,
+    vigencia_desde TEXT,
+    vigencia_hasta TEXT
 );
 """
 
@@ -74,6 +76,10 @@ def _ahora() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _vig(vigencia: tuple[date, date] | None) -> tuple[str | None, str | None]:
+    return (vigencia[0].isoformat(), vigencia[1].isoformat()) if vigencia else (None, None)
+
+
 class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +111,10 @@ class Store:
                 raise
             finally:
                 self._db.execute("PRAGMA foreign_keys = ON")
+        cols_campana = {r[1] for r in self._db.execute("PRAGMA table_info(campana)")}
+        for col in ("vigencia_desde", "vigencia_hasta"):   # vigencia de la oferta (desde/hasta inclusive, AAAA-MM-DD)
+            if col not in cols_campana:
+                self._db.execute(f"ALTER TABLE campana ADD COLUMN {col} TEXT")
         if "grupo" not in {r[1] for r in self._db.execute("PRAGMA table_info(destinatario)")}:
             self._db.execute("ALTER TABLE destinatario ADD COLUMN grupo TEXT NOT NULL DEFAULT 'envio'")
 
@@ -205,7 +215,7 @@ class Store:
                              [(cid, c, ch, "control" if c in control else "envio") for c, ch in destinatarios])
 
     def publicar(self, cid: str, destinatarios: list[tuple[str, str]], origen: str = "", control: set[str] | None = None,
-                 control_pct: int = 0) -> dict | None:
+                 control_pct: int = 0, vigencia: tuple[date, date] | None = None) -> dict | None:
         """Marca la campaña como publicada (simulado) y guarda sus destinatarios."""
         if self.obtener(cid) is None:
             return None
@@ -213,7 +223,8 @@ class Store:
 
         def hacer() -> None:
             self._db.execute("UPDATE campana SET estado='publicada', publicada_en=?, actualizada=?, paso=5, control_pct=?, "
-                             "programada_para=NULL WHERE id=?", (ahora, ahora, control_pct, cid))
+                             "programada_para=NULL, vigencia_desde=?, vigencia_hasta=? WHERE id=?",
+                             (ahora, ahora, control_pct, *_vig(vigencia), cid))
             self._guardar_destinatarios(cid, destinatarios, control or set())
 
         with self._lock:
@@ -222,15 +233,15 @@ class Store:
         return self.obtener(cid)
 
     def programar(self, cid: str, cuando: datetime, destinatarios: list[tuple[str, str]], origen: str = "",
-                  control: set[str] | None = None, control_pct: int = 0) -> dict | None:
+                  control: set[str] | None = None, control_pct: int = 0, vigencia: tuple[date, date] | None = None) -> dict | None:
         """Deja la campaña lista para publicarse sola en ``cuando`` y reserva a sus destinatarios."""
         if self.obtener(cid) is None:
             return None
         ahora, cuando_s = _ahora(), cuando.isoformat(timespec="seconds")
 
         def hacer() -> None:
-            self._db.execute("UPDATE campana SET estado='programada', programada_para=?, actualizada=?, paso=5, control_pct=? "
-                             "WHERE id=?", (cuando_s, ahora, control_pct, cid))
+            self._db.execute("UPDATE campana SET estado='programada', programada_para=?, actualizada=?, paso=5, control_pct=?, "
+                             "vigencia_desde=?, vigencia_hasta=? WHERE id=?", (cuando_s, ahora, control_pct, *_vig(vigencia), cid))
             self._guardar_destinatarios(cid, destinatarios, control or set())
 
         with self._lock:
@@ -254,6 +265,35 @@ class Store:
             self._transaccion(hacer)
         self.auditar("cancelar_programacion", cid, "", origen)
         return self.obtener(cid)
+
+    def vencidas(self, ahora: datetime | None = None) -> list[dict]:
+        """Campañas programadas cuya hora ya llegó (aún sin ejecutar)."""
+        limite = (ahora or datetime.now()).isoformat(timespec="seconds")
+        with self._lock:
+            ids = [r[0] for r in self._db.execute(
+                "SELECT id FROM campana WHERE estado='programada' AND eliminada_en IS NULL AND programada_para <= ?", (limite,))]
+        return [c for c in (self.obtener(i) for i in ids) if c]
+
+    def destinatarios(self, cid: str) -> list[tuple[str, str, str]]:
+        """(cliente, canales, grupo) de una campaña."""
+        with self._lock:
+            return [tuple(r) for r in self._db.execute(
+                "SELECT cliente_id, canales, grupo FROM destinatario WHERE campana_id = ? ORDER BY cliente_id", (cid,))]
+
+    def depurar_destinatarios(self, cid: str, filas: list[tuple[str, str, str]], quitados: int, origen: str = "") -> None:
+        """Reemplaza los destinatarios de una campaña programada por los que siguen siendo contactables (atómico)."""
+        envio = sum(1 for _, _, g in filas if g == "envio")
+
+        def hacer() -> None:
+            self._db.execute("DELETE FROM destinatario WHERE campana_id = ?", (cid,))
+            self._db.executemany("INSERT INTO destinatario (campana_id, cliente_id, canales, grupo) VALUES (?,?,?,?)",
+                                 [(cid, c, ch, g) for c, ch, g in filas])
+            self._db.execute("UPDATE campana SET audiencia=?, actualizada=? WHERE id=? AND estado='programada'",
+                             (envio, _ahora(), cid))
+
+        with self._lock:
+            self._transaccion(hacer)
+        self.auditar("depurar_destinatarios", cid, f"{quitados} destinatario(s) retirados por consentimiento/estado en el ERP", origen)
 
     def ejecutar_programadas(self, ahora: datetime | None = None) -> list[str]:
         """Publica (simulado) las campañas programadas cuya hora ya llegó. Idempotente: se puede llamar cada minuto."""

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 MIN_ANTICIPACION = timedelta(minutes=2)
 MAX_ANTICIPACION = timedelta(days=365)
@@ -23,6 +23,30 @@ _VENTANA_FIN_SEMANA = (8, 15)
 
 class FechaInvalida(ValueError):
     pass
+
+
+# ------------------------------------------------------------------------------------------ vigencia de la oferta
+MAX_VIGENCIA_DIAS = 90
+MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre",
+         "diciembre")
+
+
+def vigencia(inicio: date, dias: int) -> tuple[date, date]:
+    """Vigencia de la oferta: arranca el día de lanzamiento y cuenta ``dias`` días calendario, el último INCLUIDO
+    (3 días desde el 22 → 22, 23 y 24)."""
+    if not 1 <= int(dias) <= MAX_VIGENCIA_DIAS:
+        raise FechaInvalida(f"La vigencia debe ser de 1 a {MAX_VIGENCIA_DIAS} días.")
+    return inicio, inicio + timedelta(days=int(dias) - 1)
+
+
+def texto_vigencia(desde: date, hasta: date) -> str:
+    """Cómo se lee en el mensaje (marcador ``{vigencia}``): «del 22 al 24 de noviembre de 2026»."""
+    f = lambda d, anio=True: f"{d.day} de {MESES[d.month - 1]}" + (f" de {d.year}" if anio else "")  # noqa: E731
+    if desde == hasta:
+        return f"solo el {f(desde)}"
+    if (desde.year, desde.month) == (hasta.year, hasta.month):
+        return f"del {desde.day} al {f(hasta)}"
+    return f"del {f(desde, desde.year != hasta.year)} al {f(hasta)}"
 
 
 def parsear(texto: str, ahora: datetime | None = None) -> datetime:

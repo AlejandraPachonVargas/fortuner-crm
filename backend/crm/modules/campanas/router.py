@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
@@ -250,10 +250,52 @@ def _contexto_segmentacion(filtros: dict, productos_ids: list[str]) -> tuple[lis
     restringidos = seg.productos_restringidos(productos)
     dias = int(filtros.get("excluir_contactados_dias") or 0) if str(filtros.get("excluir_contactados_dias") or "0").isdigit() else 0
     excluidos = get_store().contactados_recientes(dias) if dias else set()
-    # Clientes que el CRM marcó inactivos o anonimizados (Clientes 360°) nunca entran a una campaña.
-    from ..clientes.consultas import inactivos_para_campanas
-    excluidos = excluidos | inactivos_para_campanas()
     return productos, restringidos, excluidos
+
+
+def restricciones_erp():
+    """Consentimiento, BLOQUE, estado y edad leídos del ERP en vivo. Falla CERRADA: sin esa verificación no se arma
+    ninguna audiencia (Ley 1581: ante la duda, no se contacta)."""
+    from ..clientes.consultas import restricciones_contacto
+    from ..clientes.indice import IndiceNoListo
+    try:
+        return restricciones_contacto()
+    except IndiceNoListo as e:
+        raise HTTPException(503, f"No se puede verificar el consentimiento de los clientes contra el ERP en este momento: {e}") from None
+    except Exception:
+        log.exception("No se pudieron leer las restricciones de contacto")
+        raise HTTPException(503, "No se puede verificar el consentimiento de los clientes contra el ERP en este momento. "
+                                 "Intente de nuevo en unos minutos.") from None
+
+
+def depurar_programada(c: dict, filas: list[tuple[str, str, str]], r) -> tuple[list[tuple[str, str, str]], int]:
+    """Al llegar la hora de una campaña programada se vuelve a verificar CADA destinatario contra el ERP (pudo retirar
+    su autorización, quedar bloqueado o inactivo después de programarla). Devuelve (filas que siguen, cuántas salieron)."""
+    filtros = seg.normalizar({**((c.get("segmentacion") or {}).get("filtros") or {}),
+                              "productos": [p["producto_id"] for p in c.get("productos") or []]})
+    try:
+        restringido = bool(seg.productos_restringidos(prod.por_ids(_wh(), prod.validar_ids(filtros["productos"]))))
+    except Exception:
+        restringido = True   # sin warehouse no se puede saber si hay licor: se asume que sí (falla cerrada)
+    bloqueados = r.bloqueados_para(estricto=filtros["consentimiento"] == "estricto", restringido=restringido)
+    out = []
+    for cliente, canales, grupo in filas:
+        if cliente not in r.conocidos or cliente in bloqueados:
+            continue
+        quitar = r.canales_bloqueados.get(cliente) or frozenset()
+        chs = [ch for ch in canales.split(",") if ch and ch not in quitar]
+        if chs:
+            out.append((cliente, ",".join(chs), grupo))
+    return out, len(filas) - len(out)
+
+
+def calcular_audiencia(filtros: dict, restringidos: list[str], excluidos: set[str]) -> tuple[dict, list[str], list[tuple], dict]:
+    """Ranking del warehouse + restricciones del ERP en vivo (ver ``segmentos.aplicar_restricciones``)."""
+    r = restricciones_erp()
+    f, rows = seg.calcular(_wh(), filtros, restringido=bool(restringidos), excluidos=excluidos)
+    cols = f.pop("_cols")
+    cols, rows, info = seg.aplicar_restricciones(cols, rows, f, r, bool(restringidos))
+    return f, cols, rows, info
 
 
 @router.post("/segmentacion/previsualizar")
@@ -262,15 +304,14 @@ async def previsualizar(b: Segmentar):
     filtros = dict(b.filtros)
     productos, restringidos, excluidos = _contexto_segmentacion(filtros, list(filtros.get("productos") or []))
     try:
-        f, rows = seg.calcular(wh, filtros, restringido=bool(restringidos), excluidos=excluidos)
+        f, cols, rows, info = calcular_audiencia(filtros, restringidos, excluidos)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    cols = f.pop("_cols")
     total_base = wh.scalar("SELECT COUNT(*) FROM cli_perfil") or 0
     r = seg.resumen(cols, rows, f, total_base)
     return {"resumen": r, "muestra": seg.muestra(cols, rows, f["canales"]), "filtros": f,
             "restricciones": {"alcohol_o_tabaco": restringidos[:5], "excluye_menores": bool(restringidos),
-                              "excluidos_por_campana_reciente": len(excluidos)}}
+                              "excluidos_por_campana_reciente": len(excluidos), **info}}
 
 
 @router.post("/ia/segmentacion/recomendar", dependencies=[Depends(limitar_ia)])
@@ -373,6 +414,8 @@ async def duplicar(cid: str, request: Request):
 class PublicarIn(BaseModel):
     programar_para: str | None = Field(None, max_length=40, description="Fecha y hora local ISO (2026-11-14T16:30). Vacío = ahora.")
     control_pct: int = Field(0, ge=0, le=20, description="% de la audiencia que se reserva sin enviar para medir el efecto.")
+    vigencia_dias: int | None = Field(None, ge=1, le=programacion.MAX_VIGENCIA_DIAS,
+                                      description="Días de validez de la oferta desde el lanzamiento (el último incluido).")
 
 
 @router.post("/{cid}/publicar")
@@ -393,6 +436,9 @@ async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
             cuando = programacion.parsear(b.programar_para)
         except programacion.FechaInvalida as e:
             raise HTTPException(422, str(e)) from None
+    if not b.vigencia_dias:
+        raise HTTPException(422, "Indique la vigencia de la campaña (cuántos días es válida la oferta).")
+    vig = programacion.vigencia((cuando or datetime.now()).date(), b.vigencia_dias)
     msg = c["mensaje"] or {}
     textos = msg.get("textos") or {}
     canales = [k for k in (msg.get("canales") or []) if k in seg.CANALES]
@@ -403,8 +449,7 @@ async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
         raise HTTPException(422, "Redacte el mensaje de al menos un canal seleccionado.")
     filtros = filtros_de_campana(c, canales)
     productos, restringidos, excluidos = _contexto_segmentacion(filtros, filtros["productos"])
-    f, rows = seg.calcular(_wh(), filtros, restringido=bool(restringidos), excluidos=excluidos)
-    cols = f.pop("_cols")
+    f, cols, rows, _ = calcular_audiencia(filtros, restringidos, excluidos)
     dest = seg.destinatarios(cols, rows, f)
     if not dest:
         raise HTTPException(422, "La segmentación no deja ningún destinatario contactable.")
@@ -419,10 +464,11 @@ async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
     origen = _origen(request)
     store.actualizar(cid, {"audiencia": n_envio, "costo_estimado": costo}, origen)
     if cuando:
-        out = store.programar(cid, cuando, dest, origen, control, b.control_pct)
+        out = store.programar(cid, cuando, dest, origen, control, b.control_pct, vig)
     else:
-        out = store.publicar(cid, dest, origen, control, b.control_pct)
+        out = store.publicar(cid, dest, origen, control, b.control_pct, vig)
     return {"campana": out, "simulado": True, "programada": bool(cuando), "programada_para": cuando.isoformat() if cuando else None,
+            "vigencia": {"desde": vig[0].isoformat(), "hasta": vig[1].isoformat(), "texto": programacion.texto_vigencia(*vig)},
             "destinatarios": n_envio, "control": len(control), "costo_estimado": costo, "por_canal": por_canal,
             "avisos": programacion.avisos_horario(cuando, canales) if cuando else []}
 

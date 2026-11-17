@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { ArrowLeft, Camera, ChevronLeft, Mail, MessageCircle, MessageSquareText, Mic, MoreVertical, Phone, Plus, Video } from 'lucide-react'
-import { Fragment, useId, useMemo, useState, type ReactNode } from 'react'
+import { createContext, Fragment, useContext, useId, useMemo, useState, type ReactNode } from 'react'
 import type { Mensaje, Producto } from '@/lib/api'
 import { CANAL_LABEL, fmtCop } from '@/lib/format'
 
@@ -12,7 +12,9 @@ import { CANAL_LABEL, fmtCop } from '@/lib/format'
 const EMPRESA = 'Fortuner'
 
 const hora = () => new Date().toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: false })
-const personalizar = (t: string, nombre: string) => t.replace(/\{nombre\}/gi, nombre)
+const personalizar = (t: string, nombre: string, vigencia: string) => t.replace(/\{nombre\}/gi, nombre).replace(/\{vigencia\}/gi, vigencia)
+// Texto de la vigencia en la vista previa: las fechas reales si ya se eligieron; si no, un ejemplo.
+const VigenciaCtx = createContext('del 22 al 24 de noviembre')
 
 /** WhatsApp: *negrita*, _cursiva_ y ~tachado~ (se convierten a elementos, no a HTML). */
 function formatoWA(texto: string): ReactNode[] {
@@ -35,6 +37,7 @@ function Telefono({ children, etiqueta }: { children: ReactNode; etiqueta: strin
 
 // ----------------------------------------------------------------------------------------------- WhatsApp
 function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
+  const vig = useContext(VigenciaCtx)
   return (
     <Telefono etiqueta="Así se vería el mensaje en WhatsApp">
       <div className="bg-[#075e54] pt-2">
@@ -49,7 +52,7 @@ function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
         <div className="mx-auto mb-2.5 w-fit rounded-md bg-[#fff5c4] px-2 py-0.5 text-[10px] text-[#54656f] shadow-sm">HOY</div>
         {texto ? (
           <div className="relative max-w-[88%] rounded-lg rounded-tl-none bg-white px-2.5 pt-1.5 pb-4 text-[12.5px] leading-[1.35] whitespace-pre-wrap text-[#111b21] shadow-sm">
-            {formatoWA(personalizar(texto, nombre))}
+            {formatoWA(personalizar(texto, nombre, vig))}
             <span className="absolute right-2 bottom-1 text-[9.5px] text-[#667781]">{hora()}</span>
           </div>
         ) : <p className="rounded-lg bg-white/70 px-3 py-2 text-center text-[12px] text-[#667781]">Aquí aparecerá el mensaje.</p>}
@@ -63,6 +66,7 @@ function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
 
 // ----------------------------------------------------------------------------------------------- SMS
 function SmsVista({ texto, nombre }: { texto: string; nombre: string }) {
+  const vig = useContext(VigenciaCtx)
   return (
     <Telefono etiqueta="Así se vería el SMS en el celular">
       <div className="bg-[#f6f6f8] pt-2 pb-1.5">
@@ -75,7 +79,7 @@ function SmsVista({ texto, nombre }: { texto: string; nombre: string }) {
       <div className="min-h-[300px] border-t border-[#d1d1d6] bg-white px-3 py-3">
         <div className="mb-2.5 text-center text-[10px] text-[#8e8e93]"><b>Mensaje de texto</b> · Hoy {hora()}</div>
         {texto ? (
-          <div className="max-w-[80%] rounded-[1.15rem] rounded-bl-md bg-[#e9e9eb] px-3 py-2 text-[13px] leading-[1.3] whitespace-pre-wrap text-black">{personalizar(texto, nombre)}</div>
+          <div className="max-w-[80%] rounded-[1.15rem] rounded-bl-md bg-[#e9e9eb] px-3 py-2 text-[13px] leading-[1.3] whitespace-pre-wrap text-black">{personalizar(texto, nombre, vig)}</div>
         ) : <p className="text-center text-[12px] text-[#8e8e93]">Aquí aparecerá el SMS.</p>}
       </div>
       <div className="flex items-center gap-2 border-t border-[#d1d1d6] bg-white px-2.5 py-2" aria-hidden>
@@ -87,8 +91,9 @@ function SmsVista({ texto, nombre }: { texto: string; nombre: string }) {
 
 // ----------------------------------------------------------------------------------------------- correo
 function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto: string; preheader: string; cuerpo: string; nombre: string; productos: Producto[] }) {
-  const parrafos = personalizar(cuerpo, nombre).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
-  const vista = personalizar(preheader, nombre) || (parrafos[0] ?? '').slice(0, 90)
+  const vig = useContext(VigenciaCtx)
+  const parrafos = personalizar(cuerpo, nombre, vig).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+  const vista = personalizar(preheader, nombre, vig) || (parrafos[0] ?? '').slice(0, 90)
   const dest = productos.slice(0, 4)
   return (
     <div role="img" aria-label="Así se vería el correo" className="mx-auto w-full max-w-[520px] overflow-hidden rounded-xl border border-[#dadce0] bg-[#f6f8fc] text-[#202124] shadow-lg">
@@ -101,13 +106,13 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#003760] text-[13px] font-bold text-white">F</span>
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex items-baseline gap-2"><span className="flex-1 truncate text-[12.5px] font-bold">{EMPRESA}</span><span className="text-[10.5px] font-semibold text-[#202124]">{hora()}</span></div>
-          <div className="truncate text-[12.5px] font-bold">{personalizar(asunto, nombre) || <i className="font-normal text-[#5f6368]">(sin asunto)</i>}</div>
+          <div className="truncate text-[12.5px] font-bold">{personalizar(asunto, nombre, vig) || <i className="font-normal text-[#5f6368]">(sin asunto)</i>}</div>
           <div className="truncate text-[11.5px] text-[#5f6368]">{vista || '…'}</div>
         </div>
       </div>
       {/* mensaje abierto */}
       <div className="bg-white p-3.5">
-        <h3 className="text-[15px] leading-tight font-semibold">{personalizar(asunto, nombre) || '(sin asunto)'}</h3>
+        <h3 className="text-[15px] leading-tight font-semibold">{personalizar(asunto, nombre, vig) || '(sin asunto)'}</h3>
         <div className="mt-2 flex items-center gap-2 text-[11px] text-[#5f6368]">
           <span className="grid h-7 w-7 place-items-center rounded-full bg-[#003760] text-[11px] font-bold text-white">F</span>
           <span className="leading-tight"><b className="text-[#202124]">{EMPRESA}</b><br />para {nombre}</span>
@@ -141,7 +146,14 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
 // ----------------------------------------------------------------------------------------------- contenedor con pestañas
 const ICONO = { whatsapp: MessageCircle, sms: MessageSquareText, email: Mail } as const
 
-export default function VistaCanales({ mensaje, productos, className, canal, onCanal, sinPestanas, todos }: { mensaje: Partial<Mensaje>; productos: Producto[]; className?: string; canal?: string; onCanal?: (c: string) => void; sinPestanas?: boolean; todos?: boolean }) {
+export default function VistaCanales({ vigencia, ...props }: Props & { vigencia?: string | null }) {
+  const base = useContext(VigenciaCtx)
+  return <VigenciaCtx.Provider value={vigencia || base}><Vista {...props} /></VigenciaCtx.Provider>
+}
+
+type Props = { mensaje: Partial<Mensaje>; productos: Producto[]; className?: string; canal?: string; onCanal?: (c: string) => void; sinPestanas?: boolean; todos?: boolean }
+
+function Vista({ mensaje, productos, className, canal, onCanal, sinPestanas, todos }: Props) {
   const canales = (mensaje.canales ?? []).filter((c): c is 'whatsapp' | 'sms' | 'email' => c in ICONO)
   const [sel, setSel] = useState<string>('')
   const [nombre, setNombre] = useState('María')

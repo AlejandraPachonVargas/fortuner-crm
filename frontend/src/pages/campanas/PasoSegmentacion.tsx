@@ -237,6 +237,11 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
             Hay productos de venta restringida ({prev.restricciones.alcohol_o_tabaco.slice(0, 2).join(', ')}…). Se excluyen automáticamente los menores de 18 años y los clientes sin fecha de nacimiento.
           </Notice>
         )}
+        {(prev?.restricciones.excluidos_por_erp ?? 0) + (prev?.restricciones.excluidos_por_canal ?? 0) > 0 && (
+          <Notice tone="info">
+            Verificado contra el ERP en este momento: se retiraron <b>{fmtNum((prev?.restricciones.excluidos_por_erp ?? 0) + (prev?.restricciones.excluidos_por_canal ?? 0))}</b> clientes que no autorizan el tratamiento de datos, están marcados para no recibir campañas, están inactivos{prev?.restricciones.excluye_menores ? ', son menores de edad' : ''} o no autorizan ninguno de los canales elegidos.
+          </Notice>
+        )}
         {err != null && <ErrorBox error={err} />}
         <Card title="Audiencia resultante" actions={busy ? <Badge tone="warn">Calculando…</Badge> : undefined}>
           {!r ? <Skeleton h={180} /> : (

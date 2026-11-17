@@ -1,13 +1,23 @@
 import clsx from 'clsx'
-import { CalendarClock, FlaskConical, Rocket, Sparkles } from 'lucide-react'
+import { CalendarClock, CalendarRange, FlaskConical, Rocket, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
 import { Card, Notice } from '@/components/ui'
 import type { Momento } from '@/lib/api'
 import { DIAS, fmtNum } from '@/lib/format'
-import { aDate, avisosHorario, errorFecha, fechaISO, fmtProgramada, sugerirMomento } from '@/lib/programacion'
+import { aDate, avisosHorario, errorFecha, fechaISO, fmtProgramada, MAX_VIGENCIA, sugerirMomento, textoVigencia, vigencia } from '@/lib/programacion'
 
-export interface Programa { modo: 'ahora' | 'programar'; fecha: string; hora: string; control: number }
-export const PROGRAMA_INICIAL: Programa = { modo: 'ahora', fecha: '', hora: '09:00', control: 0 }
+/** `vigencia` = días de validez de la oferta desde el lanzamiento, el último incluido. Obligatoria (null = sin elegir). */
+export interface Programa { modo: 'ahora' | 'programar'; fecha: string; hora: string; control: number; vigencia: number | null }
+export const PROGRAMA_INICIAL: Programa = { modo: 'ahora', fecha: '', hora: '09:00', control: 0, vigencia: null }
+
+/** Fechas de la vigencia según el día de lanzamiento (hoy si se publica ahora). null si falta la vigencia o la fecha. */
+export function vigenciaDe(p: Programa, hoy: string = fechaISO(new Date())): { desde: string; hasta: string; texto: string } | null {
+  const inicio = p.modo === 'ahora' ? hoy : p.fecha
+  if (!p.vigencia || !inicio) return null
+  const v = vigencia(inicio, p.vigencia)
+  return { ...v, texto: textoVigencia(v.desde, v.hasta) }
+}
+const OPCIONES_VIGENCIA = [1, 2, 3, 5, 7, 15, 30]
 
 interface Props { valor: Programa; onChange: (p: Programa) => void; canales: string[]; momento?: Momento; audiencia: number }
 
@@ -22,6 +32,7 @@ export default function PanelPublicacion({ valor, onChange, canales, momento, au
   const maxDia = Math.max(1, ...(momento?.dias.map((d) => d.n) ?? [1]))
   const diaSel = valor.fecha && !err ? (aDate(valor.fecha, valor.hora).getDay() || 7) : null
   const nControl = Math.round((audiencia * valor.control) / 100)
+  const vig = err ? null : vigenciaDe(valor, hoy)
 
   return (
     <Card title="Cuándo publicar" subtitle="Ahora, o programe el día y la hora exactos" actions={<CalendarClock size={16} className="text-ink-3" />}>
@@ -68,6 +79,30 @@ export default function PanelPublicacion({ valor, onChange, canales, momento, au
             {!momento && <p className="text-[11.5px] text-ink-3">Pase por el paso <b>Audiencia</b> para ver cuándo compran sus clientes y recibir un horario sugerido.</p>}
           </div>
         )}
+
+        <div className={clsx('rounded-xl border p-3.5', valor.vigencia ? 'border-line' : 'border-warn')}>
+          <div className="flex flex-wrap items-center gap-3">
+            <CalendarRange size={17} className="text-ink-3" />
+            <div className="min-w-0 flex-1 basis-56">
+              <div className="text-[13px] font-bold text-ink">Vigencia de la oferta <span className="text-bad">*</span></div>
+              <p className="text-[11.5px] leading-snug text-ink-3">Cuántos días es válida, contando desde el día de lanzamiento (el último día incluido). Se escribe en los mensajes donde diga <code className="rounded bg-surface-2 px-1">{'{vigencia}'}</code>.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Días de vigencia">
+              {OPCIONES_VIGENCIA.map((n) => (
+                <button key={n} type="button" aria-pressed={valor.vigencia === n} onClick={() => set({ vigencia: n })}
+                  className={clsx('h-9 min-w-9 rounded-lg border px-2.5 text-[12.5px] font-semibold transition', valor.vigencia === n ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-hover')}>{n}</button>
+              ))}
+              <label className="flex items-center gap-1.5 text-[12px] text-ink-3">Otro
+                <input type="number" min={1} max={MAX_VIGENCIA} aria-label="Días de vigencia (otro valor)" value={valor.vigencia && !OPCIONES_VIGENCIA.includes(valor.vigencia) ? valor.vigencia : ''}
+                  onChange={(e) => { const n = Math.trunc(Number(e.target.value)); set({ vigencia: n >= 1 && n <= MAX_VIGENCIA ? n : null }) }}
+                  className="h-9 w-16 rounded-lg border border-line-strong bg-surface px-2 text-[13px] text-ink" /></label>
+              <span className="text-[12px] text-ink-3">días</span>
+            </div>
+          </div>
+          {vig ? <p className="mt-2 text-[13px] text-ink">Válida <b>{vig.texto}</b> ({valor.vigencia === 1 ? '1 día' : `${valor.vigencia} días`}, el último incluido).</p>
+            : valor.vigencia && valor.modo === 'programar' ? <p className="mt-2 text-[12px] text-ink-3">Elija la fecha de lanzamiento para ver las fechas exactas.</p>
+            : <p className="mt-2 text-[12px] text-warn">Obligatoria: elija cuántos días es válida la campaña.</p>}
+        </div>
 
         <div className="rounded-xl border border-line p-3.5">
           <div className="flex flex-wrap items-center gap-3">

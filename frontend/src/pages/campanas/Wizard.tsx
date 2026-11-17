@@ -9,7 +9,7 @@ import { fmtCop, fmtNum } from '@/lib/format'
 import { aLocalISO, errorFecha, fmtProgramada } from '@/lib/programacion'
 import PasoMensaje from './PasoMensaje'
 import PasoProductos from './PasoProductos'
-import PanelPublicacion, { fmtPrograma, PROGRAMA_INICIAL, type Programa } from './PanelPublicacion'
+import PanelPublicacion, { fmtPrograma, PROGRAMA_INICIAL, vigenciaDe, type Programa } from './PanelPublicacion'
 import PasoSegmentacion, { type FiltrosSeg } from './PasoSegmentacion'
 import ResumenCampana, { pendientes } from './ResumenCampana'
 
@@ -44,7 +44,7 @@ export default function Wizard() {
   const [publicando, setPublicando] = useState(false)
   const [errPub, setErrPub] = useState<string | null>(null)
   const [programa, setPrograma] = useState<Programa>(PROGRAMA_INICIAL)
-  const [hecho, setHecho] = useState<{ destinatarios: number; costo: number; por_canal: Record<string, number>; programada: boolean; cuando: string | null; control: number; avisos: string[] } | null>(null)
+  const [hecho, setHecho] = useState<{ destinatarios: number; costo: number; por_canal: Record<string, number>; programada: boolean; cuando: string | null; control: number; avisos: string[]; vigencia: string | null } | null>(null)
   const cargado = useRef(false)
 
   // Carga inicial de un borrador existente.
@@ -77,7 +77,8 @@ export default function Wizard() {
     setGuardando(true); setErrGuardar(null)
     try {
       const c = id ? await api<Campana>(`/campanas/${id}`, { method: 'PUT', body: payload(p) }) : await api<Campana>('/campanas', { method: 'POST', body: payload(p) })
-      if (!id) { setId(c.id); window.history.replaceState(null, '', `/campanas/${c.id}/editar`) }
+      // Solo cambia la URL visible (conserva el estado del enrutador): el asistente sigue montado con lo que se está editando.
+      if (!id) { setId(c.id); window.history.replaceState(window.history.state, '', `/campanas/${c.id}/editar`) }
       setSucio(false)
       void qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('/campanas') })
       return c.id
@@ -87,8 +88,10 @@ export default function Wizard() {
   const faltantes = useMemo(() => {
     const p = pendientes({ nombre, objetivo, productos, mensaje, filtros, audiencia: 0, costo: 0, preview })
     const e = programa.modo === 'programar' ? errorFecha(programa.fecha, programa.hora) : null
-    return e ? [...p, e] : p
+    const sinVigencia = programa.vigencia ? null : 'Indique la vigencia de la campaña (cuántos días es válida la oferta).'
+    return [...p, ...(e ? [e] : []), ...(sinVigencia ? [sinVigencia] : [])]
   }, [nombre, objetivo, productos, mensaje, filtros, preview, programa])
+  const vig = vigenciaDe(programa)
   const programar = programa.modo === 'programar'
   const puedeIr = (n: number) => (n <= 1 ? true : n === 2 ? productos.length > 0 : n === 3 ? productos.length > 0 && mensaje.canales.length > 0 : productos.length > 0 && mensaje.canales.length > 0)
   const irA = async (n: number) => {
@@ -104,10 +107,10 @@ export default function Wizard() {
     try {
       const cid = await guardar(4)
       if (!cid) { setPublicando(false); return }
-      const r = await api<{ destinatarios: number; costo_estimado: number; por_canal: Record<string, number>; programada: boolean; programada_para: string | null; control: number; avisos: string[] }>(`/campanas/${cid}/publicar`, {
-        method: 'POST', body: { programar_para: programa.modo === 'programar' ? aLocalISO(programa.fecha, programa.hora) : null, control_pct: programa.control },
+      const r = await api<{ destinatarios: number; costo_estimado: number; por_canal: Record<string, number>; programada: boolean; programada_para: string | null; control: number; avisos: string[]; vigencia?: { texto: string } }>(`/campanas/${cid}/publicar`, {
+        method: 'POST', body: { programar_para: programa.modo === 'programar' ? aLocalISO(programa.fecha, programa.hora) : null, control_pct: programa.control, vigencia_dias: programa.vigencia },
       })
-      setHecho({ destinatarios: r.destinatarios, costo: r.costo_estimado, por_canal: r.por_canal, programada: r.programada, cuando: r.programada_para, control: r.control, avisos: r.avisos ?? [] })
+      setHecho({ destinatarios: r.destinatarios, costo: r.costo_estimado, por_canal: r.por_canal, programada: r.programada, cuando: r.programada_para, control: r.control, avisos: r.avisos ?? [], vigencia: r.vigencia?.texto ?? null })
       setConfirmar(false)
       void qc.invalidateQueries({ predicate: (x) => String(x.queryKey[0]).startsWith('/campanas') })
     } catch (e) { setErrPub(e instanceof Error ? e.message : 'No se pudo publicar') } finally { setPublicando(false) }
@@ -128,6 +131,7 @@ export default function Wizard() {
           <h1 className="mt-3 text-[24px] font-semibold text-ink">{hecho.programada ? 'Campaña programada' : 'Campaña publicada (simulación)'}</h1>
           <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-ink-2">
             {hecho.programada ? <>Se publicará el <b>{fmtProgramada(hecho.cuando)}</b> para </> : <>Se registró la campaña con </>}<b>{fmtNum(hecho.destinatarios)}</b> destinatarios y un costo estimado de <b>{fmtCop(hecho.costo)}</b>.
+            {hecho.vigencia && <> La oferta es válida <b>{hecho.vigencia}</b>.</>}
             {hecho.control > 0 && <> Además <b>{fmtNum(hecho.control)}</b> personas quedaron como grupo de control (sin envío) para medir el efecto real.</>}{' '}
             Por ahora <b>no se envía ningún mensaje real</b>: la difusión por WhatsApp, SMS y correo se conectará en una siguiente fase.</p>
           {hecho.programada && <p className="mx-auto mt-2 max-w-md text-[12px] text-ink-3">Mientras esté programada puede cancelarla desde el historial para volver a editarla.</p>}
@@ -179,7 +183,7 @@ export default function Wizard() {
       {paso === 3 && <PasoSegmentacion filtros={filtros} onChange={marcar(setFiltros)} productos={productos} canales={mensaje.canales} temporadaId={mensaje.temporada_id ?? null} onPreview={setPreview} />}
       {paso === 4 && (
         <div className="space-y-4">
-          <ResumenCampana d={{ nombre, objetivo, productos, mensaje, filtros, audiencia: preview?.resumen.audiencia ?? 0, costo: preview?.resumen.costo_estimado ?? 0, preview }} />
+          <ResumenCampana d={{ nombre, objetivo, productos, mensaje, filtros, audiencia: preview?.resumen.audiencia ?? 0, costo: preview?.resumen.costo_estimado ?? 0, preview, vigencia: vig?.texto }} />
           <PanelPublicacion valor={programa} onChange={setPrograma} canales={mensaje.canales} momento={preview?.resumen.momento} audiencia={preview?.resumen.audiencia ?? 0} />
           {!preview && <Notice tone="info">Para ver el costo y los destinatarios exactos, pase por el paso <b>Audiencia</b>.</Notice>}
           {faltantes.length > 0 && <Notice tone="warn"><b>Antes de publicar:</b><ul className="mt-1 list-disc pl-5">{faltantes.map((f) => <li key={f}>{f}</li>)}</ul></Notice>}
@@ -197,8 +201,8 @@ export default function Wizard() {
       </div>
 
       <ConfirmDialog open={confirmar} title={programar ? 'Programar campaña' : 'Publicar campaña'} confirmLabel={programar ? 'Programar' : 'Publicar'} busy={publicando} onCancel={() => setConfirmar(false)} onConfirm={() => void publicar()}>
-        {programar ? <>Se programará la campaña <b>{nombre || 'sin título'}</b> para el <b>{fmtPrograma(programa)}</b>, dirigida a <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}).</>
-          : <>Se registrará la campaña <b>{nombre || 'sin título'}</b> para <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}).</>}
+        {programar ? <>Se programará la campaña <b>{nombre || 'sin título'}</b> para el <b>{fmtPrograma(programa)}</b>, dirigida a <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}){vig && <>, válida <b>{vig.texto}</b></>}.</>
+          : <>Se registrará la campaña <b>{nombre || 'sin título'}</b> para <b>{fmtNum(preview?.resumen.audiencia ?? 0)}</b> personas (≈ {fmtCop(preview?.resumen.costo_estimado ?? 0)}){vig && <>, válida <b>{vig.texto}</b></>}.</>}
         <div className="mt-2 rounded-lg bg-info-soft px-3 py-2 text-[12.5px] text-info">Es una <b>simulación</b>: no se enviará ningún mensaje real. {programar ? 'Mientras esté programada podrá cancelarla para volver a editarla; el público se recalcula al confirmar.' : 'Después de publicar la campaña ya no se podrá editar.'}</div>
         {errPub && <div className="mt-2 text-bad">{errPub}</div>}
       </ConfirmDialog>

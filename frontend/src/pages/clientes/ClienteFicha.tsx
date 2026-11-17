@@ -52,6 +52,7 @@ export default function ClienteFicha() {
             <Badge tone={c.consentimiento === 'si' ? 'good' : c.consentimiento === 'no' ? 'bad' : 'warn'}>{c.consentimiento === 'si' ? 'Autoriza datos' : c.consentimiento === 'no' ? 'No autoriza' : 'Sin consentimiento'}</Badge>
             {c.empleado && <Badge tone="brand">Empleado</Badge>}
             {c.bloqueado && <Badge tone="bad">Bloqueado en el POS</Badge>}
+            {c.sinCampanas && <Badge tone="warn">No recibe campañas</Badge>}
             {c.origen === 'CRM' && <Badge>Creado desde el CRM</Badge>}
             {c.etiquetas.map((t) => <Badge key={t} tone="brand">{t}</Badge>)}
           </div>

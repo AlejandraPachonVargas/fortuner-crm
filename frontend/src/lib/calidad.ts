@@ -2,7 +2,7 @@ import type { Mensaje, Producto } from './api'
 
 export interface Chequeo { ok: boolean; texto: string; ayuda?: string }
 
-const BAJA = /(responde\s+(no|baja|stop)|dejar\s+de\s+recibir|darte?\s+de\s+baja|cancelar\s+suscripci|no\s+recibir)/i
+const VIGENCIA = /\{vigencia\}/i
 const LEYENDA = /(exceso\s+de\s+alcohol|perjudicial\s+para\s+la\s+salud|prohibido.*menores|menores\s+de\s+edad)/i
 const NO_GSM = /[áíóúÁÍÓÚ]|\p{Extended_Pictographic}/u
 
@@ -17,9 +17,10 @@ export function revisarCalidad(m: Partial<Mensaje>, productos: Producto[], restr
   const wa = t.whatsapp?.texto ?? '', sms = t.sms?.texto ?? '', em = t.email
   const todos = [wa, sms, em?.cuerpo ?? ''].join('\n')
 
-  for (const [canal, texto] of [['WhatsApp', wa], ['SMS', sms]] as const) {
-    if (!canales.includes(canal === 'WhatsApp' ? 'whatsapp' : 'sms') || !texto) continue
-    out.push({ ok: BAJA.test(texto), texto: `${canal}: opción de baja`, ayuda: 'Incluya «Responde NO para dejar de recibir»: es obligatoria por ley y por los proveedores.' })
+  // Vigencia: cada canal debe decir hasta cuándo vale la oferta. {vigencia} se reemplaza por las fechas reales al publicar.
+  for (const [canal, id, texto] of [['WhatsApp', 'whatsapp', wa], ['SMS', 'sms', sms], ['Correo', 'email', em?.cuerpo ?? '']] as const) {
+    if (!canales.includes(id) || !texto) continue
+    out.push({ ok: VIGENCIA.test(texto), texto: `${canal}: indica la vigencia`, ayuda: 'Incluya «Válido {vigencia}»: se reemplaza por las fechas que elija al publicar (p. ej. «del 22 al 24 de noviembre»).' })
   }
   if (canales.includes('sms') && sms) {
     const un = sms.length <= 160 && !NO_GSM.test(sms)

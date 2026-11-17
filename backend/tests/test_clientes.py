@@ -105,7 +105,7 @@ def test_profesion_del_catalogo_ganprofe():
 
 def test_quien_no_autoriza_datos_tampoco_autoriza_canales():
     cols = columnas_para({"consentimiento": "no", "autorizaWhatsapp": True}, ACTUAL, Cat())
-    assert cols == {"INFOLEY": False, "INFOTEX": False, "INFOELEC": False, "INFOWAS": False}
+    assert cols == {"INFOLEY": False, "INFOTEX": False, "INFOELEC": False, "INFOWAS": False, "BLOQUE": False}
     assert columnas_para({"consentimiento": "sin_registro"}, ACTUAL, Cat()) == {"INFOLEY": None}
 
 

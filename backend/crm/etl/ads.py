@@ -80,10 +80,11 @@ TABLES: tuple[SourceTable, ...] = (
     ),
     SourceTable(
         "POSCLI",
-        ("CODCLI", "CEDCLI", "NOMCLI", "EMAIL", "TELCELU", "CIUCLI", "BARRIO1", "SEXO", "FECHAN", "FECHAI",
+        ("CODCLI", "CEDCLI", "NOMCLI", "EMAIL", "TELCELU", "CIUCLI", "BARRIO1", "SEXO", "FECHAN", "ANON", "FECHAI",
          "INFOLEY", "CLUBVINO", "CLUBSALUD", "CLUBMASCO", "CLUBPARRI", "BLOQUE"),
         description="Clientes POS",
-        types=_t(date_="FECHAN FECHAI"),
+        # FECHAN se extrae como texto: llega como AAAAMMDD o como MMDD con el año en ANON (model.sql arma la fecha).
+        types=_t(date_="FECHAI"),
         order_by=("CODCLI",),
     ),
     SourceTable(

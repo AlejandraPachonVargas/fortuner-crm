@@ -78,8 +78,9 @@ _SYSTEM = (
     "(4) usa el marcador {nombre} para personalizar con el nombre del cliente; (5) WhatsApp: 300-600 caracteres, tono cálido, "
     "emojis moderados, saltos de línea, llamado a la acción claro; (6) SMS: MÁXIMO 150 caracteres, sin emojis ni tildes si es "
     "posible, directo, con llamado a la acción; (7) Correo: asunto (máx. 60 caracteres), preheader (máx. 90) y cuerpo en texto "
-    "plano de 3 a 6 párrafos cortos con los productos destacados; (8) cierra siempre invitando a visitar la tienda; en SMS y "
-    "WhatsApp añade al final la opción de baja: «Responde NO para dejar de recibir»; (9) no prometas lo que no esté en los datos."
+    "plano de 3 a 6 párrafos cortos con los productos destacados; (8) cierra siempre invitando a visitar la tienda; NO incluyas instrucciones para darse de baja ni invites "
+    "a responder NO; (9) indica la vigencia de la oferta con el marcador {vigencia} (se reemplaza por las fechas reales, "
+    "p. ej. «Válido {vigencia}»), sin inventar fechas; (10) no prometas lo que no esté en los datos."
 )
 
 

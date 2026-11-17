@@ -96,6 +96,7 @@ export interface Campana {
   productos: Producto[]; mensaje: Partial<Mensaje>; segmentacion: { filtros?: Record<string, unknown> }
   audiencia: number; costo_estimado: number; creada: string; actualizada: string; publicada_en: string | null
   programada_para?: string | null; control_pct?: number; grupos?: { envio: number; control: number }
+  vigencia_desde?: string | null; vigencia_hasta?: string | null
   n_productos?: number
 }
 export interface Momento {
@@ -114,7 +115,7 @@ export interface Resumen {
 export interface Preview {
   resumen: Resumen
   muestra: { cliente: string; celular: string; correo: string; puntaje: number; afinidad: number; segmento: string; canales: string[]; motivos: string[] }[]
-  restricciones: { alcohol_o_tabaco: string[]; excluye_menores: boolean; excluidos_por_campana_reciente: number }
+  restricciones: { alcohol_o_tabaco: string[]; excluye_menores: boolean; excluidos_por_campana_reciente: number; excluidos_por_erp?: number; excluidos_por_canal?: number }
 }
 export interface OpcionesSeg {
   segmentos_rfm: Record<string, string>; ciclo: Record<string, string>; edades: string[]; clubs: string[]

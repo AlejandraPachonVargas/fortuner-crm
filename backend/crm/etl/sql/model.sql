@@ -1,7 +1,7 @@
 -- =============================================================================
 -- MODELO ANALÍTICO DEL CRM  <-  Parquet crudo extraído de Advantage (ERP FORTUNER)
 -- Toda limpieza de tipos y llaves ocurre aquí, en SQL vectorizado de DuckDB.
--- Placeholders: {staging} (carpeta de Parquet), {hoy} (fecha de la carga, 'AAAA-MM-DD'),
+-- Placeholders: {staging} (carpeta de Parquet), {hoy} (fecha calendario de la carga, 'AAAA-MM-DD': solo para la EDAD),
 --               {no_venta} (productos que no son venta, entre comillas y separados por coma).
 -- =============================================================================
 
@@ -21,8 +21,11 @@ FROM (SELECT clean(CTABCOD) AS codigo, clean(CTABDES) AS nombre
 ORDER BY codigo, nombre;
 
 -- ------------------------------------------------------------------ ventas (líneas depuradas)
--- Se excluyen: líneas anuladas (IFNULO = 'X'), recibos de caja (factura con prefijo R: abonos, no son ventas)
--- y productos que no son venta (tarjeta regalo). La cédula 222222222222 u otra que no exista en POSCLI es
+-- Se excluyen: líneas anuladas (IFNULO = 'X'), líneas que NO son un producto y productos que no son venta (tarjeta regalo).
+-- Una línea es venta solo si IFARTIC es un código de producto (numérico, como todos los de TIDSAL). Los recibos de caja,
+-- abonos y sobrantes llegan con IFARTIC = 'R', vacío, 'SOBRANTE' o el nombre de una persona.
+-- (Antes se descartaba toda factura cuyo número empezara por R: eso borraba la serie RO, que es la facturación normal
+--  de la sucursal 83 — 1,02 millones de líneas — y las series R0x/R1x/RLR/RR con productos reales.) La cédula 222222222222 u otra que no exista en POSCLI es
 -- «consumidor final»: cliente_id queda NULL (se vende, pero no se puede segmentar).
 -- IFCLIENTE trae la CÉDULA del cliente o el NÚMERO DE TARJETA Gana Mercaldas (CODCLI): se resuelven ambos a la cédula.
 -- (Antes solo se cruzaba por cédula y se perdía ~23 % de la venta con cliente identificado.)
@@ -54,9 +57,20 @@ LEFT JOIN cli c ON c.cedula = clean(d.IFCLIENTE)
 LEFT JOIN tarjeta t ON t.codigo = clean(d.IFCLIENTE)
 WHERE d.IFFECHA IS NOT NULL
   AND COALESCE(UPPER(clean(d.IFNULO)), '') <> 'X'
-  AND NOT starts_with(UPPER(COALESCE(clean(d.IFFACT), '')), 'R')
-  AND clean(d.IFARTIC) IS NOT NULL
+  AND d.IFFECHA::DATE <= DATE '{hoy}'                       -- una fecha futura es un error de digitación
+  AND regexp_matches(COALESCE(clean(d.IFARTIC), ''), '^[0-9]+$')
   AND clean(d.IFARTIC) NOT IN ({no_venta});
+
+-- ------------------------------------------------------------------ fecha de corte de los datos
+-- Recencia, ciclo de compra, ventanas de 30/90/180 días y rotación se miden contra el ÚLTIMO DÍA CON VENTAS COMPLETAS,
+-- no contra el reloj del servidor. Si el ERP llega con días de atraso (copia, falla del ETL, cierre pendiente), medir
+-- contra «hoy» envejece artificialmente a todos los clientes (salen «inactivos» y casi nadie «nuevo»).
+-- Día completo = al menos el 25 % de la mediana de líneas diarias de los 120 días previos (descarta días con 3 líneas
+-- sueltas). En producción, con el ERP al día, el corte es ayer u hoy.
+CREATE OR REPLACE TABLE corte_datos AS
+WITH d AS (SELECT fecha, COUNT(*) AS n FROM venta GROUP BY fecha),
+     r AS (SELECT median(n) AS med FROM d WHERE fecha > (SELECT max(fecha) FROM d) - INTERVAL 120 DAY)
+SELECT COALESCE(MAX(d.fecha), DATE '{hoy}') AS fecha FROM d, r WHERE d.n >= 0.25 * r.med;
 
 -- ------------------------------------------------------------------ productos
 CREATE OR REPLACE TABLE producto AS
@@ -116,12 +130,17 @@ WITH base AS (
            clean(CIUCLI) AS ciudad,
            clean(BARRIO1) AS barrio,
            CASE UPPER(clean(SEXO)) WHEN 'F' THEN 'F' WHEN 'M' THEN 'M' ELSE NULL END AS sexo,
-           FECHAN AS fecha_nacimiento,
+           -- FECHAN llega como AAAAMMDD, o como MMDD con el año en ANON (mismo criterio que Clientes 360°).
+           CASE WHEN regexp_matches(COALESCE(clean(FECHAN), ''), '^[0-9]{{8}}$') THEN try_strptime(clean(FECHAN), '%Y%m%d')::DATE
+                WHEN regexp_matches(COALESCE(clean(FECHAN), ''), '^[0-9]{{3,4}}$') AND TRY_CAST(clean(ANON) AS INTEGER) BETWEEN 1901 AND year(DATE '{hoy}')
+                THEN try_strptime(lpad(CAST(TRY_CAST(clean(ANON) AS INTEGER) AS VARCHAR), 4, '0') || lpad(clean(FECHAN), 4, '0'), '%Y%m%d')::DATE
+                WHEN regexp_matches(COALESCE(clean(FECHAN), ''), '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}') THEN TRY_CAST(left(clean(FECHAN), 10) AS DATE)
+           END AS fecha_nacimiento,
            FECHAI AS fecha_ingreso,
            INFOLEY AS autoriza_raw,
            to_bool(CLUBVINO) AS club_vino, to_bool(CLUBSALUD) AS club_salud,
            to_bool(CLUBMASCO) AS club_mascotas, to_bool(CLUBPARRI) AS club_parrilla,
-           clean(BLOQUE) AS bloqueado
+           clean(BLOQUE) AS bloque
     FROM read_parquet('{staging}/poscli/*.parquet')
     WHERE clean(CEDCLI) IS NOT NULL
       AND NOT (length(clean(CEDCLI)) >= 5 AND replace(clean(CEDCLI), left(clean(CEDCLI), 1), '') = '')   -- 2222222222, 0000000…
@@ -130,8 +149,12 @@ WITH base AS (
     SELECT DISTINCT ON (cliente_id) * FROM base ORDER BY cliente_id, (email IS NOT NULL) DESC, codigo
 )
 SELECT cliente_id, codigo, nombre, email, ciudad, barrio, sexo,
-       CASE WHEN fecha_nacimiento BETWEEN DATE '1920-01-01' AND DATE '{hoy}' - INTERVAL 10 YEAR
-            THEN date_diff('year', fecha_nacimiento, DATE '{hoy}') END AS edad,
+       -- Edad EXACTA en años cumplidos (resta 1 si este año aún no llega el cumpleaños). date_diff('year') solo cuenta
+       -- cambios de año calendario y daba 18 a quien tiene 17: inaceptable para licor y cigarrillo. Fechas imposibles = NULL
+       -- (y NULL nunca pasa el filtro «mayor de edad»).
+       CASE WHEN fecha_nacimiento BETWEEN DATE '1920-01-01' AND DATE '{hoy}'
+            THEN date_diff('year', fecha_nacimiento, DATE '{hoy}')
+                 - CASE WHEN strftime(DATE '{hoy}', '%m%d') < strftime(fecha_nacimiento, '%m%d') THEN 1 ELSE 0 END END AS edad,
        -- celular colombiano: 10 dígitos que empiezan por 3 (con o sin prefijo 57)
        CASE WHEN regexp_matches(tel, '^(57)?3[0-9]{{9}}$') THEN right(tel, 10) END AS celular,
        regexp_matches(COALESCE(email, ''), '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{{2,}}$')
@@ -140,7 +163,9 @@ SELECT cliente_id, codigo, nombre, email, ciudad, barrio, sexo,
        CASE WHEN autoriza_raw IS NULL THEN NULL ELSE to_bool(autoriza_raw) END AS autoriza_datos,
        club_vino, club_salud, club_mascotas, club_parrilla,
        fecha_ingreso,
-       bloqueado IS NOT NULL AND bloqueado <> '' AS bloqueado
+       -- BLOQUE (POSCLI, lógico): en Mercaldas un valor marcado (false) significa «NO enviar campañas». Solo excluye de
+       -- Campañas; en Clientes 360° el cliente se sigue viendo y editando. El CRM lo escribe al registrar «No autoriza».
+       bloque IS NOT NULL AS bloqueado
 FROM uno;
 
 -- ------------------------------------------------------------------ agregados para consultas rápidas
@@ -155,7 +180,7 @@ FROM venta GROUP BY fecha, producto_id;
 
 -- Estadísticas de rotación por producto (base de las recomendaciones por inventario)
 CREATE OR REPLACE TABLE producto_stats AS
-WITH h AS (SELECT DATE '{hoy}' AS hoy)
+WITH h AS (SELECT fecha AS hoy FROM corte_datos)
 SELECT p.producto_id,
        MAX(a.fecha) FILTER (WHERE a.unidades > 0)                          AS ultima_venta,
        MIN(a.fecha)                                                        AS primera_venta,
@@ -197,10 +222,10 @@ SELECT cliente_id,
        AVG(gap)   AS intervalo_dias,
        STDDEV_POP(gap) AS intervalo_desv,
        SUM(descuento) / NULLIF(SUM(bruta), 0) AS pct_descuento,
-       COUNT(*) FILTER (WHERE fecha > DATE '{hoy}' - INTERVAL 90 DAY)  AS visitas_90d,
-       COUNT(*) FILTER (WHERE fecha > DATE '{hoy}' - INTERVAL 180 DAY) AS visitas_180d,
-       COALESCE(SUM(venta) FILTER (WHERE fecha > DATE '{hoy}' - INTERVAL 90 DAY), 0)  AS venta_90d,
-       COALESCE(SUM(venta) FILTER (WHERE fecha > DATE '{hoy}' - INTERVAL 180 DAY), 0) AS venta_180d,
+       COUNT(*) FILTER (WHERE fecha > (SELECT fecha FROM corte_datos) - INTERVAL 90 DAY)  AS visitas_90d,
+       COUNT(*) FILTER (WHERE fecha > (SELECT fecha FROM corte_datos) - INTERVAL 180 DAY) AS visitas_180d,
+       COALESCE(SUM(venta) FILTER (WHERE fecha > (SELECT fecha FROM corte_datos) - INTERVAL 90 DAY), 0)  AS venta_90d,
+       COALESCE(SUM(venta) FILTER (WHERE fecha > (SELECT fecha FROM corte_datos) - INTERVAL 180 DAY), 0) AS venta_180d,
        COUNT(*) FILTER (WHERE isodow(fecha) >= 6)  AS visitas_finde,
        COUNT(*) FILTER (WHERE isodow(fecha) = 5)   AS visitas_viernes,
        COUNT(*) FILTER (WHERE day(fecha) BETWEEN 1 AND 5 OR day(fecha) BETWEEN 15 AND 20 OR day(fecha) >= 28) AS visitas_quincena,
@@ -241,7 +266,7 @@ FROM cli_dia GROUP BY cliente_id, month(fecha);
 -- R = recencia, F = frecuencia (visitas), M = valor (venta total). Quintiles 1..5 (5 = mejor).
 CREATE OR REPLACE TABLE cli_rfm AS
 WITH b AS (
-    SELECT p.*, date_diff('day', p.ultima_compra, DATE '{hoy}') AS dias_sin_compra
+    SELECT p.*, GREATEST(0, date_diff('day', p.ultima_compra, (SELECT fecha FROM corte_datos))) AS dias_sin_compra
     FROM cli_perfil p
 ), q AS (
     SELECT *,

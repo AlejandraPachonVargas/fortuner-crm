@@ -22,11 +22,11 @@ from . import calendario
 
 log = logging.getLogger("crm.campanas.productos")
 
-# Vista base: producto + rotación. {hoy} sale del propio warehouse (fecha de la carga).
+# Vista base: producto + rotación. Los días sin venta se miden contra la fecha de corte de los datos (no el reloj).
 _BASE = """
 FROM producto p
 JOIN producto_stats s USING (producto_id)
-CROSS JOIN (SELECT hoy FROM meta) m
+CROSS JOIN (SELECT corte AS hoy FROM meta) m
 """
 _COLS = """
 p.producto_id, p.ean, p.producto, p.marca, p.tipo_producto,

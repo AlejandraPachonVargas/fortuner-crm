@@ -9,6 +9,8 @@ import { CANAL_LABEL, fmtCop, fmtNum } from '@/lib/format'
 export interface DatosCampana {
   nombre: string; objetivo: string; productos: Producto[]; mensaje: Partial<Mensaje>; filtros: Record<string, unknown>
   audiencia: number; costo: number; preview?: Preview | null
+  /** Texto de la vigencia («del 22 al 24 de noviembre de 2026») para la vista previa de los mensajes. */
+  vigencia?: string | null
 }
 
 const NOMBRES: Record<string, string> = {
@@ -101,7 +103,7 @@ export default function ResumenCampana({ d, calidad = true }: { d: DatosCampana;
       </div>
 
       <Card icon={<Wallet size={18} />} title="Así lo verá el cliente" subtitle="Vista previa de cada canal">
-        <VistaCanales mensaje={m} productos={d.productos} todos />
+        <VistaCanales mensaje={m} productos={d.productos} vigencia={d.vigencia} todos />
         {(m.tokens ?? 0) > 0 && <p className="mt-3 text-[11.5px] text-ink-3">Redactado con IA · {fmtNum(m.tokens)} tokens consumidos.</p>}
         {m.modo === 'manual' && <p className="mt-3 text-[11.5px] text-ink-3">Redacción propia (sin IA, sin tokens).</p>}
       </Card>

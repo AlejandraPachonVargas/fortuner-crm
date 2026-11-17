@@ -133,7 +133,7 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
         )}
 
         <Card icon={<PenSquare size={18} />} title={ia ? 'Revisa y ajusta' : 'Escribe tu mensaje'}
-          subtitle={<>Usa <code className="rounded bg-surface-2 px-1">{'{nombre}'}</code> para personalizar e incluye siempre cómo darse de baja.</>}>
+          subtitle={<>Usa <code className="rounded bg-surface-2 px-1">{'{nombre}'}</code> para personalizar y <code className="rounded bg-surface-2 px-1">{'{vigencia}'}</code> para las fechas de validez de la oferta.</>}>
           {elegidos.length === 0 ? <p className="text-[13px] text-ink-3">Elige un canal arriba para empezar.</p> : (
             <div className="space-y-4">
               <div role="tablist" aria-label="Canal que estás editando" className="flex gap-1 border-b border-line">

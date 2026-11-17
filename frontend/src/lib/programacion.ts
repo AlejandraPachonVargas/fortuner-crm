@@ -7,6 +7,26 @@ export const fechaISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)
 export const aLocalISO = (fecha: string, hora: string) => `${fecha}T${hora}`
 export const aDate = (fecha: string, hora: string) => new Date(`${fecha}T${hora}:00`)
 
+// ------------------------------------------------------------------------------------------ vigencia de la oferta
+export const MAX_VIGENCIA = 90
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+const deISO = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d) }
+
+/** Desde el día de lanzamiento, `dias` días calendario con el último INCLUIDO (3 días desde el 22 → 22, 23 y 24). */
+export function vigencia(inicio: string, dias: number): { desde: string; hasta: string } {
+  const h = deISO(inicio); h.setDate(h.getDate() + dias - 1)
+  return { desde: inicio.slice(0, 10), hasta: fechaISO(h) }
+}
+
+/** Mismo texto que el servidor pone en lugar de {vigencia}: «del 22 al 24 de noviembre de 2026». */
+export function textoVigencia(desde: string, hasta: string): string {
+  const a = deISO(desde), b = deISO(hasta)
+  const f = (d: Date, anio = true) => `${d.getDate()} de ${MESES[d.getMonth()]}${anio ? ` de ${d.getFullYear()}` : ''}`
+  if (desde === hasta) return `solo el ${f(a)}`
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) return `del ${a.getDate()} al ${f(b)}`
+  return `del ${f(a, a.getFullYear() !== b.getFullYear())} al ${f(b)}`
+}
+
 /** Hora de envío sugerida según la franja en que más compra la audiencia: llegar justo antes de su momento de compra. */
 const HORA_POR_FRANJA: Record<string, string> = { mañana: '08:30', tarde: '12:30', noche: '16:30' }
 

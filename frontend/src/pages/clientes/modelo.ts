@@ -44,7 +44,7 @@ export interface Cliente extends DatosCliente {
   profesionTexto: string; ciudadTexto: string; barrioTexto: string; telefono2: string
   clubesErp: Record<string, boolean>
   creado: string | null; modificadoErp: string | null; sucursal: string; origenWeb: boolean; origen: string
-  puntos: number; ultimaAcumulacion: string | null; empleado: boolean; bloqueado: boolean; observacionErp: string
+  puntos: number; ultimaAcumulacion: string | null; empleado: boolean; bloqueado: boolean; sinCampanas: boolean; observacionErp: string
   estado: EstadoCliente; motivoEstado: string; fusionadoEn: string; fusionados: { tarjeta: string; documento: string }[]
   editable: boolean; avisos: string[]; version: string
   visitas: number; ventaTotal: number; ticketProm: number; ultimaCompra: string | null; primeraCompra: string | null

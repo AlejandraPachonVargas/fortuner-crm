@@ -60,6 +60,7 @@ SELECT
   CASE WHEN regexp_matches(p.cel_dig, '^3[0-9]{9}$') THEN p.cel_dig END AS cel_norm,
   CASE p.infoley WHEN TRUE THEN 'si' WHEN FALSE THEN 'no' ELSE 'sin_registro' END AS consentimiento,
   p.infotex AS autoriza_sms, p.infoelec AS autoriza_email, p.infowas AS autoriza_whatsapp,
+  p.bloque AS sin_campanas,
   p.nac, p.cumple, COALESCE(p.sexo, '') AS sexo,
   COALESCE(p.ciudad, '') AS ciudad_id, COALESCE(p.codbarrio, '') AS barrio_id, COALESCE(p.dircli1, '') AS direccion,
   p.fechai AS creado, p.puntos, p.sucursal,
@@ -109,7 +110,7 @@ def _filas_base(rows: list[tuple], nombres: list[str]) -> pa.Table:
     cols: dict[str, list] = {k: [] for k in (
         "rid", "codcli", "cedcli", "tipodoc", "tipcli", "nomcli", "nombre", "nombre2", "apellido", "apellido2", "sexo",
         "nac", "cumple", "telcelu", "email", "ciudad", "codbarrio", "dircli1", "infoley", "infotex", "infoelec", "infowas",
-        "fechai", "puntos", "sucursal", "busca")}
+        "bloque", "fechai", "puntos", "sucursal", "busca")}
     for r in rows:
         nac, cumple = nacimiento_de(g(r, "FECHAN"), g(r, "ANON"))
         n = [txt(g(r, c)).upper() for c in ("NOMBRE", "NOMBRE2", "APELLIDO", "APELLIDO2")]
@@ -132,6 +133,7 @@ def _filas_base(rows: list[tuple], nombres: list[str]) -> pa.Table:
         cols["dircli1"].append(txt(g(r, "DIRCLI1")))
         for k, c in (("infoley", "INFOLEY"), ("infotex", "INFOTEX"), ("infoelec", "INFOELEC"), ("infowas", "INFOWAS")):
             cols[k].append(logico(g(r, c)))
+        cols["bloque"].append(g(r, "BLOQUE") is not None)   # cualquier valor (en el ERP solo existe false) = sin campañas
         cols["fechai"].append(_a_fecha(g(r, "FECHAI")))
         try:
             cols["puntos"].append(float(g(r, "PUNTOS") or 0))
@@ -141,7 +143,7 @@ def _filas_base(rows: list[tuple], nombres: list[str]) -> pa.Table:
         nombre = " ".join(p for p in n if p) or txt(g(r, "NOMCLI"))
         cols["busca"].append(norm_busqueda(f"{nombre} {txt(g(r, 'NOMCLI'))}"))
     tipos = {"nac": pa.date32(), "fechai": pa.date32(), "puntos": pa.float64(),
-             **{k: pa.bool_() for k in ("infoley", "infotex", "infoelec", "infowas")}}
+             **{k: pa.bool_() for k in ("infoley", "infotex", "infoelec", "infowas", "bloque")}}
     return pa.table({k: pa.array(v, type=tipos.get(k, pa.string())) for k, v in cols.items()})
 
 

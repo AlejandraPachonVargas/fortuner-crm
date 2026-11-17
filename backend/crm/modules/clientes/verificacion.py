@@ -183,9 +183,17 @@ def _prueba_escritura(inf: Informe, s: Settings) -> None:
             inf.ok("Escritura: protección de cambios ajenos", "rechazó una versión vieja")
         servicio.guardar_mascota(c["id"], {"tipoId": "02", "nombre": "Prueba"}, actor)
         with conexion.erp(s=s) as con:
-            f = conexion.filas(con, "SELECT EMAIL, MASCOTA, CODMASCO, NOMMASCO, FECHAMOD FROM POSCLI WHERE CODCLI = ?", (codcli,))[0]
+            f = conexion.filas(con, "SELECT EMAIL, MASCOTA, CODMASCO, NOMMASCO, FECHAMOD, INFOLEY, BLOQUE FROM POSCLI WHERE CODCLI = ?", (codcli,))[0]
         bien = txt(f["EMAIL"]) == "verificacion@crm.local" and f["MASCOTA"] is True and txt(f["CODMASCO"]) == "02"
         (inf.ok if bien else inf.falla)("Escritura: la caja ve los cambios (POSCLI)", f"EMAIL={txt(f['EMAIL'])} MASCOTA={f['MASCOTA']} CODMASCO={txt(f['CODMASCO'])} NOMMASCO={txt(f['NOMMASCO'])}")
+        bien = f["INFOLEY"] is False and f["BLOQUE"] is False
+        (inf.ok if bien else inf.falla)("Escritura: «No autoriza» bloquea campañas (BLOQUE)", f"INFOLEY={f['INFOLEY']} BLOQUE={f['BLOQUE']}")
+        c = servicio.ficha(c["id"])
+        servicio.actualizar(c["id"], {"consentimiento": "si"}, c["version"], actor)
+        with conexion.erp(s=s) as con:
+            f = conexion.filas(con, "SELECT INFOLEY, BLOQUE FROM POSCLI WHERE CODCLI = ?", (codcli,))[0]
+        bien = f["INFOLEY"] is True and f["BLOQUE"] is None
+        (inf.ok if bien else inf.falla)("Escritura: «Sí autoriza» libera campañas (BLOQUE vacío)", f"INFOLEY={f['INFOLEY']} BLOQUE={f['BLOQUE']}")
         servicio.eliminar(c["id"], actor)
         with conexion.erp(s=s) as con:
             quedan = conexion.filas(con, "SELECT COUNT(*) AS N FROM POSCLI WHERE CODCLI = ?", (codcli,))[0]["N"]
