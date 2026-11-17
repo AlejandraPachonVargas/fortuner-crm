@@ -3,7 +3,7 @@ import { Boxes, CalendarDays, Check, Info, Plus, Search, Sparkles, TrendingDown,
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Btn, Card, Empty, ErrorBox, Field, MultiSelect, Notice, SearchInput, Skeleton, Spinner } from '@/components/ui'
 import { api, useGet, type Filtros, type Producto, type Temporada } from '@/lib/api'
-import { fmtCop, fmtCopCorto, fmtFecha, fmtNum } from '@/lib/format'
+import { fmtCop, fmtFecha, fmtNum } from '@/lib/format'
 
 interface Props { value: Producto[]; onChange: (p: Producto[]) => void; temporadaId: string | null; onTemporada: (id: string | null) => void }
 
@@ -207,7 +207,7 @@ function TabInventario({ sel, toggle, addMany }: TabProps) {
         : !items || items.length === 0 ? <Empty text="No se detectó inventario inmovilizado" hint="Ningún producto activo supera los umbrales de exceso o falta de rotación." /> : (
           <>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-line px-4 py-3 text-[12.5px] text-ink-2">
-              <span>Capital inmovilizado en esta lista: <b className="text-ink">{fmtCopCorto(capital)}</b></span>
+              <span>Capital inmovilizado en esta lista: <b className="text-ink">{fmtCop(capital)}</b></span>
               <label className="ml-auto flex items-center gap-2">Mostrar
                 <select value={limite} onChange={(e) => setLimite(Number(e.target.value))} className="h-8 rounded-lg border border-line-strong bg-surface px-2 text-[12.5px]">
                   {[10, 20, 40, 80].map((n) => <option key={n} value={n}>{n}</option>)}
@@ -221,7 +221,7 @@ function TabInventario({ sel, toggle, addMany }: TabProps) {
                     <div className="mt-1.5 space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
                         {p.causa && <Badge tone={CAUSAS[p.causa]?.tone ?? 'warn'}>{CAUSAS[p.causa]?.label ?? p.causa}</Badge>}
-                        <span className="text-[11.5px] text-ink-3">Capital inmovilizado <b className="text-ink-2">{fmtCopCorto(p.capital_inmovilizado)}</b></span>
+                        <span className="text-[11.5px] text-ink-3">Capital inmovilizado <b className="text-ink-2">{fmtCop(p.capital_inmovilizado)}</b></span>
                         {(p.descuento_sugerido ?? 0) > 0 && <Badge tone="good" title="Descuento máximo referencial que conserva al menos 40 % del margen">Descuento sugerido hasta {p.descuento_sugerido}%</Badge>}
                         {(p.descuento_sugerido ?? 0) === 0 && <Badge title="El margen sobre el último costo no permite descontar">Sin margen para descuento</Badge>}
                       </div>

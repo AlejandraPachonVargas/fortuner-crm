@@ -7,12 +7,13 @@ export const fmtNum = (v: number | null | undefined) => (v == null ? '—' : nf.
 export const fmtNum1 = (v: number | null | undefined) => (v == null ? '—' : nf1.format(v))
 export const fmtPct = (v: number | null | undefined) => (v == null ? '—' : `${nf1.format(v)}%`)
 
-/** $ abreviado para tarjetas: 1,2 M / 450 mil. */
+/** $ abreviado SOLO para las marcas de los ejes de las gráficas (donde no cabe el número completo), siempre en palabras
+ *  claras: «$20.000 millones», «$2,5 millones», «$450 mil». Tarjetas, etiquetas y tablas usan el valor exacto (fmtCop). */
 export function fmtCopCorto(v: number | null | undefined): string {
   if (v == null) return '—'
   const a = Math.abs(v)
-  if (a >= 1e9) return `$${nf1.format(v / 1e9)} mil M`
-  if (a >= 1e6) return `$${nf1.format(v / 1e6)} M`
+  if (a >= 1e7) return `$${nf.format(v / 1e6)} millones`
+  if (a >= 1e6) return `$${nf1.format(v / 1e6)} millones`
   if (a >= 1e3) return `$${nf.format(v / 1e3)} mil`
   return `$${nf.format(v)}`
 }

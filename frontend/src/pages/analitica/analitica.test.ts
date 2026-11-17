@@ -29,7 +29,9 @@ describe('gráficas', () => {
     expect(safeColor('#1c5cab')).toBe('#1c5cab')
   })
   it('abrevia las cifras en los ejes', () => {
-    expect(fmtV(1_500_000, 'int')).toBe('1,5 M')
+    expect(fmtV(1_500_000, 'int')).toBe('1,5 millones')
+    expect(fmtV(157_715_073_455, 'money')).toBe('$157.715 millones')   // eje: en palabras, nunca «mil M»
+    expect(fmtV(157_715_073_455, 'money', false).replace(/\s/g, ' ')).toBe('$ 157.715.073.455')   // tarjetas y etiquetas: exacto
     expect(fmtV(25_300, 'int')).toBe('25,3 mil')
     expect(fmtV(null, 'int')).toBe('—')
   })

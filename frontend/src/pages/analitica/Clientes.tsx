@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import EChart, { useChartTokens, type ChartClick } from '@/charts/EChart'
 import { columnsOption, donutOption, embudoOption, filaTip, fmtV, heatmapOption, lineOption, piramideOption, rankingOption } from '@/charts/builders'
 import { Btn, Notice } from '@/components/ui'
-import { fmtCopCorto, fmtFecha, fmtNum, fmtNum1, fmtPct } from '@/lib/format'
+import { fmtCop, fmtFecha, fmtNum, fmtNum1, fmtPct } from '@/lib/format'
 import { CICLOS, SEGMENTOS } from '../clientes/modelo'
 import { ChartCard, consulta, Estado, FiltroActivo, FiltroMenu, Kpi, Seccion, useTablero, type OpcionFiltro } from './kit'
 
@@ -17,7 +17,7 @@ interface Tablero {
     kpis: Record<string, N | null>
     contacto: { embudo: { id: string; n: N }[]; consentimiento: { id: string; n: N }[]; canales: { id: string; si: N; no: N }[]; datos: Record<string, N> }
     estados: Record<string, N>
-    altas: { mes: string; n: N }[]; segmentos: Fila[]; ciclos: Fila[]; recencia: Fila[]; frecuencia: Fila[]; tickets: Fila[]
+    altas: { mes: string; n: N }[]; segmentos: Fila[]; ciclos: Fila[]; recencia: Fila[]; frecuencia: Fila[]
     clubes: Club[]; n_clubes: { id: N; n: N }[]; pares_clubes: { a: string; b: string; n: N }[]; mascotas: (Fila & { clientes: N })[]
     demografia: { edad: string; sexo: string; n: N }[]; ciudades: Fila[]; sedes_alta: Fila[]; completitud: Fila[]
   }
@@ -40,6 +40,8 @@ const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 const mes = (m: string) => { const [y, mm] = m.split('-'); return `${MESES[Number(mm) - 1] ?? mm} ${y.slice(2)}` }
 const CONSENT: Record<string, string> = { si: 'Autoriza', no: 'No autoriza', sin_registro: 'Sin registro' }
+// Número de compras (días con compra) por cliente. Solo la última barra queda abierta.
+const FRECUENCIA = ['1-2', '3-5', '6-12', '13-24', '25-52', '53-100', '101+']
 
 export default function AnaliticaClientes() {
   const t = useChartTokens()
@@ -80,6 +82,10 @@ export default function AnaliticaClientes() {
     if (!p) return null
     // «Sin compras» (sin compras con documento en el periodo) se informa aparte: su barra aplastaría a los segmentos reales.
     const segs = p.segmentos.filter((s) => s.id !== 'sin_compras').sort((a, b) => b.n - a.n)
+    // Rangos fijos en orden (los que no tengan clientes aparecen en 0 para que la escala se lea completa).
+    const frecuencia = FRECUENCIA.map((id) => ({ id, n: p.frecuencia.find((x) => x.id === id)?.n ?? 0 }))
+    // Gasto por compra de cada segmento = todo lo que compraron ÷ cuántas veces compraron (un solo monto por barra).
+    const porCompra = segs.filter((s) => (s.visitas ?? 0) > 0).map((s) => ({ ...s, valor: (s.venta ?? 0) / s.visitas! })).sort((a, b) => b.valor - a.valor)
     const clubes = p.clubes.filter((x) => x.id !== 'ninguno').sort((a, b) => b.n - a.n)
     const sin = p.clubes.find((x) => x.id === 'ninguno')
     const comparar = [...clubes, ...(sin ? [sin] : [])]
@@ -92,10 +98,12 @@ export default function AnaliticaClientes() {
       ciclos: donutOption(t, { fmt: 'int', items: [...p.ciclos].sort(ORDEN(Object.keys(CICLOS))).map((x) => ({ name: CICLOS[x.id] ?? x.id, value: x.n })) }),
       recencia: columnsOption(t, { fmt: 'int', labels: [...p.recencia].sort(ORDEN(['0-30', '31-60', '61-90', '91-180', '181+'])).map((x) => `${x.id} días`),
         series: [{ name: 'Clientes', color: t.series[0], data: [...p.recencia].sort(ORDEN(['0-30', '31-60', '61-90', '91-180', '181+'])).map((x) => x.n) }] }),
-      frecuencia: columnsOption(t, { fmt: 'int', labels: [...p.frecuencia].sort(ORDEN(['1', '2', '3-5', '6-10', '11-20', '21-50', '51+'])).map((x) => `${x.id}`),
-        series: [{ name: 'Clientes', color: t.series[2], data: [...p.frecuencia].sort(ORDEN(['1', '2', '3-5', '6-10', '11-20', '21-50', '51+'])).map((x) => x.n) }] }),
-      tickets: columnsOption(t, { fmt: 'int', labels: [...p.tickets].sort(ORDEN(['<20 mil', '20-50 mil', '50-100 mil', '100-200 mil', '200-500 mil', '500 mil+'])).map((x) => x.id.replace(' mil', '')),
-        series: [{ name: 'Clientes', color: t.series[3], data: [...p.tickets].sort(ORDEN(['<20 mil', '20-50 mil', '50-100 mil', '100-200 mil', '200-500 mil', '500 mil+'])).map((x) => x.n) }] }),
+      frecuencia: columnsOption(t, { fmt: 'int', ejeX: 'Número de compras en el periodo', labels: frecuencia.map((x) => x.id),
+        series: [{ name: 'Clientes', color: t.series[2], data: frecuencia.map((x) => x.n) }] }),
+      porCompra: rankingOption(t, {
+        fmt: 'money', margenIzq: 16, categories: porCompra.map((s) => SEGMENTOS[s.id] ?? s.id), values: porCompra.map((s) => s.valor), colors: porCompra.map(() => t.series[3]),
+        extra: (i) => filaTip(t.compare, 'Clientes', fmtV(porCompra[i].n, 'int', false)) + filaTip(t.compare, 'Compras', fmtV(porCompra[i].visitas ?? 0, 'int', false)),
+      }),
       clubes: rankingOption(t, {
         categories: clubes.map((x) => nombreClub(x.id)), values: clubes.map((x) => x.n), fmt: 'int', colors: clubes.map((x) => colorClub(x.id)),
         extra: (i) => filaTip(t.compare, 'Con compras', fmtV(clubes[i].con_compras, 'int', false)) + filaTip(t.compare, 'Activos (90 días)', fmtV(clubes[i].activos_90, 'int', false)) + filaTip(t.compare, 'Contactables', fmtV(clubes[i].contactables, 'int', false)),
@@ -200,8 +208,8 @@ export default function AnaliticaClientes() {
               <Kpi label="Autorizan sus datos" value={fmtNum(k.autorizan)} sub={`${fmtPct(k.pct_autorizan)} · Ley 1581`} pct={k.pct_autorizan} tone="mint" />
               <Kpi label="Contactables para campañas" value={fmtNum(k.contactables)} sub={`${fmtPct(k.pct_contactables)} · autorizan, sin BLOQUE y con canal`} pct={k.pct_contactables} tone="mint" />
               <Kpi label="En algún club" value={fmtNum(k.en_clubes)} sub={`${fmtPct(k.pct_en_clubes)} de los clientes`} pct={k.pct_en_clubes} />
-              <Kpi label="Ticket promedio" value={fmtCopCorto(k.ticket)} sub="Gasto por visita" />
-              <Kpi label="Venta de estos clientes" value={fmtCopCorto(k.venta)} sub={`${fmtCopCorto(k.venta_prom)} por cliente con compras`} />
+              <Kpi label="Ticket promedio" value={fmtCop(k.ticket)} sub="Gasto por visita" />
+              <Kpi label="Venta de estos clientes" value={fmtCop(k.venta)} sub={`${fmtCop(k.venta_prom)} por cliente con compras`} />
               <Kpi label="Visitas por cliente" value={fmtNum1(k.visitas_prom)} sub={`Edad promedio ${fmtNum1(k.edad_prom)} años`} />
               <Kpi label="Ficha completa (promedio)" value={fmtPct(k.completitud)} sub={`${fmtPct(k.pct_con_edad)} tienen fecha de nacimiento`} pct={k.completitud} tone={(k.completitud ?? 0) >= 70 ? 'good' : 'warn'} />
             </>}
@@ -244,13 +252,15 @@ export default function AnaliticaClientes() {
               table={p ? { cols: [{ key: 'id', label: 'Días' }, { key: 'n', label: 'Clientes', fmt: 'int' }, { key: 'venta', label: 'Venta', fmt: 'money' }], rows: p.recencia } : undefined}>
               {g && <EChart label="Recencia" option={g.recencia} height={220} />}
             </ChartCard>
-            <ChartCard title="¿Cuántas veces compran?" subtitle="Visitas (días con compra) por cliente" cargando={cargando} height={220}
-              table={p ? { cols: [{ key: 'id', label: 'Visitas' }, { key: 'n', label: 'Clientes', fmt: 'int' }, { key: 'venta', label: 'Venta', fmt: 'money' }], rows: p.frecuencia } : undefined}>
+            <ChartCard title="¿Cuántas veces compran?" subtitle="Clientes según cuántas veces han comprado" cargando={cargando} height={220}
+              info="Cada barra cuenta los clientes que compraron ese número de veces en el periodo de datos (cada día con compra es una vez). Como guía para un año: 6-12 ≈ una vez al mes, 13-24 ≈ cada quince días, 25-52 ≈ cada semana."
+              table={p ? { cols: [{ key: 'id', label: 'Veces que compró' }, { key: 'n', label: 'Clientes', fmt: 'int' }, { key: 'venta', label: 'Venta', fmt: 'money' }], rows: p.frecuencia } : undefined}>
               {g && <EChart label="Frecuencia" option={g.frecuencia} height={220} />}
             </ChartCard>
-            <ChartCard title="¿Cuánto gastan por visita?" subtitle="Ticket promedio de cada cliente, en miles de pesos" cargando={cargando} height={220}
-              table={p ? { cols: [{ key: 'id', label: 'Ticket' }, { key: 'n', label: 'Clientes', fmt: 'int' }], rows: p.tickets } : undefined}>
-              {g && <EChart label="Ticket promedio" option={g.tickets} height={220} />}
+            <ChartCard title="¿Cuánto gasta cada tipo de cliente?" subtitle="Promedio por compra, en pesos" cargando={cargando} height={220}
+              table={p ? { cols: [{ key: 'nombre', label: 'Segmento' }, { key: 'por_compra', label: 'Gasto por compra', fmt: 'money' }, { key: 'n', label: 'Clientes', fmt: 'int' }, { key: 'visitas', label: 'Compras', fmt: 'int' }],
+                rows: p.segmentos.filter((s) => s.id !== 'sin_compras' && (s.visitas ?? 0) > 0).map((s) => ({ ...s, nombre: SEGMENTOS[s.id] ?? s.id, por_compra: (s.venta ?? 0) / s.visitas! })) } : undefined}>
+              {g && <EChart label="Gasto por compra según tipo de cliente" option={g.porCompra} height={220} />}
             </ChartCard>
           </div>
         </Seccion>
@@ -347,7 +357,7 @@ export default function AnaliticaClientes() {
               table={c ? { cols: [{ key: 'nombre', label: 'Categoría' }, { key: 'venta', label: 'Venta', fmt: 'money' }, { key: 'clientes', label: 'Clientes', fmt: 'int' }], rows: c.categorias } : undefined}>
               {gc ? <EChart label="Categorías" option={gc.categorias} height={altura(c!.categorias.length)} /> : <SinVentas />}
             </ChartCard>
-            <ChartCard title="Departamentos" subtitle="Participación en la venta" cargando={cargando} height={280}
+            <ChartCard title="Departamentos" subtitle={c ? `Participación en la venta · total ${fmtCop(c.departamentos.reduce((s, x) => s + (x.venta ?? 0), 0))}` : "Participación en la venta"} cargando={cargando} height={280}
               table={c ? { cols: [{ key: 'nombre', label: 'Departamento' }, { key: 'venta', label: 'Venta', fmt: 'money' }, { key: 'clientes', label: 'Clientes', fmt: 'int' }], rows: c.departamentos } : undefined}>
               {gc ? <EChart label="Departamentos" option={gc.departamentos} height={280} /> : <SinVentas />}
             </ChartCard>

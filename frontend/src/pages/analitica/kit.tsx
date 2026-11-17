@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { BarChart3, ChevronDown, Download, Info, Table2, X } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { BarChart3, Download, Info, Table2 } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { ErrorBox, Skeleton } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { fmtV, type Fmt } from '@/charts/builders'
@@ -146,77 +146,8 @@ export function Filtro({ label, opciones, valor, onChange }: { label: string; op
   )
 }
 
-export interface OpcionFiltro { id: string; label: string; color?: string }
-
-/** Botón de filtro compacto con menú desplegable de selección múltiple (búsqueda si hay muchas opciones). */
-export function FiltroMenu({ label, opciones, valor, onChange }: { label: string; opciones: OpcionFiltro[]; valor: string[]; onChange: (v: string[]) => void }) {
-  const [abierto, setAbierto] = useState(false)
-  const [q, setQ] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
-  const id = useId()
-  useEffect(() => {
-    if (!abierto) return
-    const fuera = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setAbierto(false) }
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(false) }
-    document.addEventListener('mousedown', fuera)
-    document.addEventListener('keydown', esc)
-    return () => { document.removeEventListener('mousedown', fuera); document.removeEventListener('keydown', esc) }
-  }, [abierto])
-  const busca = opciones.length > 10
-  const vistas = useMemo(() => {
-    const n = q.trim().toLowerCase()
-    return n ? opciones.filter((o) => o.label.toLowerCase().includes(n)) : opciones
-  }, [opciones, q])
-  const unico = valor.length === 1 ? opciones.find((o) => o.id === valor[0])?.label : null
-  const activo = valor.length > 0
-  return (
-    <div ref={ref} className="relative">
-      <button type="button" aria-expanded={abierto} aria-controls={id} aria-haspopup="true" onClick={() => setAbierto(!abierto)}
-        className={clsx('inline-flex h-9 max-w-[240px] items-center gap-1.5 rounded-full border px-3.5 text-[12.5px] font-medium transition',
-          activo ? 'border-brand bg-brand-soft text-brand' : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-hover hover:text-ink')}>
-        <span className="truncate">{label}{unico ? <>: <b className="font-semibold">{unico}</b></> : null}</span>
-        {valor.length > 1 && <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-brand px-1 text-[10.5px] font-bold text-white">{valor.length}</span>}
-        <ChevronDown size={14} className={clsx('shrink-0 transition', abierto && 'rotate-180')} />
-      </button>
-      {abierto && (
-        <div id={id} role="group" aria-label={label}
-          className="absolute top-11 left-0 z-40 w-[260px] max-w-[calc(100vw-32px)] rounded-2xl border border-line bg-surface p-2 shadow-[0_24px_48px_-20px_rgba(0,45,73,.45)]">
-          {busca && (
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Buscar ${label.toLowerCase()}…`} aria-label={`Buscar ${label.toLowerCase()}`}
-              className="mb-1.5 h-9 w-full rounded-xl border border-line-strong bg-surface-2 px-3 text-[12.5px] text-ink outline-none focus:border-brand" />
-          )}
-          <div className="max-h-72 overflow-y-auto scroll-thin">
-            {vistas.map((o) => {
-              const on = valor.includes(o.id)
-              return (
-                <label key={o.id} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-ink hover:bg-surface-hover">
-                  <input type="checkbox" checked={on} onChange={() => onChange(on ? valor.filter((x) => x !== o.id) : [...valor, o.id])} className="h-4 w-4 accent-[var(--brand)]" />
-                  {o.color && <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: o.color }} />}
-                  <span className="truncate">{o.label}</span>
-                </label>
-              )
-            })}
-            {!vistas.length && <div className="px-2.5 py-3 text-[12.5px] text-ink-3">Sin coincidencias</div>}
-          </div>
-          {activo && (
-            <button type="button" onClick={() => onChange([])} className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] font-semibold text-brand hover:bg-brand-soft">Quitar selección</button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Pastilla de un filtro activo, con botón para quitarlo. */
-export function FiltroActivo({ texto, color, onQuitar }: { texto: string; color?: string; onQuitar: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 py-1 pr-1 pl-2.5 text-[12px] font-medium text-ink-2">
-      {color && <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: color }} />}
-      {texto}
-      <button type="button" aria-label={`Quitar filtro ${texto}`} onClick={onQuitar} className="grid h-5 w-5 place-items-center rounded-full text-ink-3 hover:bg-surface-hover hover:text-ink"><X size={12} /></button>
-    </span>
-  )
-}
+// Los filtros desplegables viven en components/filtros.tsx (los comparte la lista de Clientes 360°).
+export { FiltroActivo, FiltroMenu, type OpcionFiltro } from '@/components/filtros'
 
 export function Estado({ error, cargando, children }: { error: unknown; cargando: boolean; children: ReactNode }) {
   if (error && !cargando) return <ErrorBox error={error} />

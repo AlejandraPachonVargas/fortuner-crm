@@ -173,13 +173,11 @@ def _poblacion(f: dict, corte: date) -> dict:
     recencia = q("""SELECT CASE WHEN dias_sin <= 30 THEN '0-30' WHEN dias_sin <= 60 THEN '31-60' WHEN dias_sin <= 90 THEN '61-90'
                      WHEN dias_sin <= 180 THEN '91-180' ELSE '181+' END AS id, COUNT(*) AS n, SUM(venta_total) AS venta
                     FROM b WHERE dias_sin IS NOT NULL GROUP BY 1""")
-    frecuencia = q("""SELECT CASE WHEN visitas = 1 THEN '1' WHEN visitas = 2 THEN '2' WHEN visitas <= 5 THEN '3-5'
-                       WHEN visitas <= 10 THEN '6-10' WHEN visitas <= 20 THEN '11-20' WHEN visitas <= 50 THEN '21-50' ELSE '51+' END AS id,
+    # Compras (días con compra) en el periodo de datos. Rangos pensados para un año: 6-12 ≈ mensual, 13-24 ≈ quincenal,
+    # 25-52 ≈ semanal; solo la última barra queda abierta (101+).
+    frecuencia = q("""SELECT CASE WHEN visitas <= 2 THEN '1-2' WHEN visitas <= 5 THEN '3-5' WHEN visitas <= 12 THEN '6-12'
+                       WHEN visitas <= 24 THEN '13-24' WHEN visitas <= 52 THEN '25-52' WHEN visitas <= 100 THEN '53-100' ELSE '101+' END AS id,
                        COUNT(*) AS n, SUM(venta_total) AS venta FROM b WHERE visitas > 0 GROUP BY 1""")
-    tickets = q("""SELECT CASE WHEN ticket_prom < 20000 THEN '<20 mil' WHEN ticket_prom < 50000 THEN '20-50 mil'
-                    WHEN ticket_prom < 100000 THEN '50-100 mil' WHEN ticket_prom < 200000 THEN '100-200 mil'
-                    WHEN ticket_prom < 500000 THEN '200-500 mil' ELSE '500 mil+' END AS id, COUNT(*) AS n
-                   FROM b WHERE visitas > 0 AND ticket_prom IS NOT NULL GROUP BY 1""")
     clubes = q("""SELECT trim(u.club) AS id, COUNT(*) AS n, SUM(COALESCE(venta_total, 0)) AS venta, SUM(COALESCE(visitas, 0)) AS visitas,
                     COUNT(*) FILTER (WHERE visitas > 0) AS con_compras, COUNT(*) FILTER (WHERE dias_sin <= 90) AS activos_90,
                     COUNT(*) FILTER (WHERE consentimiento = 'si') AS autorizan,
@@ -208,7 +206,7 @@ def _poblacion(f: dict, corte: date) -> dict:
     completitud = q("""SELECT CASE WHEN completitud < 40 THEN '0-39' WHEN completitud < 60 THEN '40-59' WHEN completitud < 80 THEN '60-79'
                         ELSE '80-100' END AS id, COUNT(*) AS n FROM b GROUP BY 1""")
     return {"kpis": kpis, "contacto": contacto, "estados": estados, "altas": altas, "segmentos": segmentos, "ciclos": ciclos,
-            "recencia": recencia, "frecuencia": frecuencia, "tickets": tickets, "clubes": clubes, "n_clubes": n_clubes,
+            "recencia": recencia, "frecuencia": frecuencia, "clubes": clubes, "n_clubes": n_clubes,
             "pares_clubes": pares, "mascotas": mascotas, "demografia": demografia, "ciudades": ciudades,
             "sedes_alta": sedes_alta, "completitud": completitud, "_sel": (base, p)}
 

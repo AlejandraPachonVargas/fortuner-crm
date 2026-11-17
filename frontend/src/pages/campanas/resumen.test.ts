@@ -44,7 +44,8 @@ describe('formatos', () => {
     expect(fmtCop(null)).toBe('—')
   })
   it('abrevia montos', () => {
-    expect(fmtCopCorto(2_500_000)).toContain('M')
+    expect(fmtCopCorto(2_500_000)).toBe('$2,5 millones')
+    expect(fmtCopCorto(33_540_000_000)).toBe('$33.540 millones')   // nunca «mil M»
     expect(fmtCopCorto(450_000)).toContain('mil')
   })
 })

@@ -1,8 +1,9 @@
 import clsx from 'clsx'
-import { ArrowDown, ArrowUp, Bookmark, ChevronLeft, ChevronRight, Download, Filter, Gift, Mail, Phone, Plus, Tag, Upload, UserX, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Bookmark, ChevronLeft, ChevronRight, Download, FilterX, Gift, Mail, Phone, Plus, SlidersHorizontal, Tag, Upload, UserX, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Badge, Btn, Card, ChipGroup, Empty, ErrorBox, SearchInput, Skeleton, Spinner, Stat } from '@/components/ui'
+import { Desplegable, FiltroActivo, FiltroMenu, type OpcionFiltro } from '@/components/filtros'
+import { Badge, Btn, Card, Empty, ErrorBox, SearchInput, Skeleton, Spinner, Stat } from '@/components/ui'
 import { descargar } from '@/lib/api'
 import { fmtCop, fmtFecha, fmtNum } from '@/lib/format'
 import { Anillo, Avatar, Modal, mascara, selectCls, usePermisos } from './comun'
@@ -40,7 +41,6 @@ export default function ClientesLista() {
   const vistaUrl = sp.get('vista') ?? 'todos'
   const [vista, setVista] = useState(vistaUrl)
   const [f, setF] = useState<Filtros>(() => ({ ...F0, ...(VISTAS.find((v) => v.id === vistaUrl)?.filtros ?? {}), club: sp.get('club') ?? '', problema: sp.get('problema') ?? VISTAS.find((v) => v.id === vistaUrl)?.filtros.problema ?? '' }))
-  const [panel, setPanel] = useState(false)
   const [orden, setOrden] = useState<{ campo: Campo; dir: 1 | -1 }>({ campo: 'ventaTotal', dir: -1 })
   const [pag, setPag] = useState(0)
   const [sel, setSel] = useState<Set<string>>(new Set())
@@ -99,6 +99,31 @@ export default function ClientesLista() {
   }
   const set = (p: Partial<Filtros>) => setF({ ...f, ...p })
 
+  // ---------------------------------------------------------------- barra de filtros
+  const ESTADOS = [{ id: 'activo', label: 'Activos' }, { id: 'inactivo', label: 'Inactivos' }, { id: 'anonimizado', label: 'Anonimizados' }]
+  const CONSENT = [{ id: 'si', label: 'Autoriza' }, { id: 'no', label: 'No autoriza' }, { id: 'sin_registro', label: 'Sin registro' }]
+  const unoA = (k: 'club' | 'mascota' | 'ciudad' | 'problema') => (v: string[]) => set({ [k]: v[0] ?? '' } as Partial<Filtros>)
+  const menus: { clave: string; label: string; opciones: OpcionFiltro[]; valor: string[]; cambiar: (v: string[]) => void; unico?: boolean }[] = [
+    { clave: 'estado', label: 'Estado', opciones: ESTADOS, valor: f.estado, cambiar: (v) => set({ estado: v }) },
+    { clave: 'consentimiento', label: 'Consentimiento', opciones: CONSENT, valor: f.consentimiento, cambiar: (v) => set({ consentimiento: v }) },
+    { clave: 'segmentos', label: 'Segmento', opciones: Object.entries(SEGMENTOS).map(([id, label]) => ({ id, label })), valor: f.segmentos, cambiar: (v) => set({ segmentos: v }) },
+    { clave: 'club', label: 'Club', unico: true, opciones: afis.map((a) => ({ id: a.id, label: a.nombre, color: a.color })), valor: f.club ? [f.club] : [], cambiar: unoA('club') },
+    { clave: 'mascota', label: 'Mascota', unico: true, valor: f.mascota ? [f.mascota] : [], cambiar: unoA('mascota'),
+      opciones: [{ id: 'con', label: 'Con alguna mascota' }, ...(cat?.tiposMascota.filter((t) => t.id !== '01').map((t) => ({ id: t.id, label: t.nombre })) ?? [])] },
+    { clave: 'ciudad', label: 'Ciudad', unico: true, valor: f.ciudad ? [f.ciudad] : [], cambiar: unoA('ciudad'), opciones: cat?.ciudades.map((c) => ({ id: c.id, label: c.nombre })) ?? [] },
+    { clave: 'problema', label: 'Calidad de datos', unico: true, valor: f.problema ? [f.problema] : [], cambiar: unoA('problema'), opciones: PROBLEMAS.map((p) => ({ id: p.id, label: p.titulo })) },
+  ]
+  // Pastillas de lo que se aparta del estado normal (ver solo los activos no se muestra como filtro).
+  const activos: { clave: string; texto: string; color?: string; quitar: () => void }[] = [
+    ...(f.estado.join() === 'activo' ? [] : f.estado.map((id) => ({ clave: `estado-${id}`, texto: `Estado: ${ESTADOS.find((e) => e.id === id)?.label ?? id}`, quitar: () => set({ estado: f.estado.filter((x) => x !== id) }) }))),
+    ...menus.filter((m) => m.clave !== 'estado').flatMap((m) => m.valor.map((id) => {
+      const o = m.opciones.find((x) => x.id === id)
+      return { clave: `${m.clave}-${id}`, texto: `${m.label}: ${o?.label ?? id}`, color: o?.color, quitar: () => m.cambiar(m.valor.filter((x) => x !== id)) }
+    })),
+    ...(f.etiqueta ? [{ clave: 'etiqueta', texto: `Etiqueta: ${f.etiqueta}`, quitar: () => set({ etiqueta: '' }) }] : []),
+    ...(f.completitudMax < 100 ? [{ clave: 'comp', texto: `Ficha completa hasta ${f.completitudMax}%`, quitar: () => set({ completitudMax: 100 }) }] : []),
+  ]
+
   return (
     <div className="mx-auto max-w-[1400px]">
       <NavClientes />
@@ -123,8 +148,6 @@ export default function ClientesLista() {
         <div className="space-y-3 border-b border-line p-4">
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-60 flex-1"><SearchInput value={q} onChange={setQ} placeholder="Buscar por nombre, documento, tarjeta, celular, correo o mascota…" /></div>
-            <Btn variant={panel ? 'primary' : 'secondary'} icon={<Filter size={15} />} onClick={() => setPanel(!panel)}>Filtros</Btn>
-            {hayFiltros && <Btn variant="ghost" onClick={() => { setQ(''); aplicarVista(vista) }}>Limpiar</Btn>}
             {hayFiltros && <Btn variant="ghost" icon={<Bookmark size={15} />} onClick={() => setModal('guardar')}>Guardar vista</Btn>}
           </div>
           <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Vistas">
@@ -132,17 +155,26 @@ export default function ClientesLista() {
               <button key={v.id} type="button" role="tab" aria-selected={vista === v.id} onClick={() => aplicarVista(v.id)}
                 className={clsx('rounded-full border px-3 py-1 text-[12.5px] font-semibold transition', vista === v.id ? 'border-brand bg-brand text-white' : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-hover')}>{v.label}</button>))}
           </div>
-          {panel && (
-            <div className="grid gap-4 rounded-2xl bg-surface-2 p-4 md:grid-cols-2 xl:grid-cols-3">
-              <div><div className="mb-1.5 text-[12px] font-bold text-ink-2">Estado en el CRM</div><ChipGroup value={f.estado} onChange={(v) => set({ estado: v })} options={[{ id: 'activo', label: 'Activos' }, { id: 'inactivo', label: 'Inactivos' }, { id: 'anonimizado', label: 'Anonimizados' }]} /></div>
-              <div><div className="mb-1.5 text-[12px] font-bold text-ink-2">Consentimiento</div><ChipGroup value={f.consentimiento} onChange={(v) => set({ consentimiento: v })} options={[{ id: 'si', label: 'Autoriza' }, { id: 'no', label: 'No autoriza' }, { id: 'sin_registro', label: 'Sin registro' }]} /></div>
-              <div className="md:col-span-2 xl:col-span-1"><div className="mb-1.5 text-[12px] font-bold text-ink-2">Segmento</div><ChipGroup value={f.segmentos} onChange={(v) => set({ segmentos: v })} options={Object.entries(SEGMENTOS).map(([id, label]) => ({ id, label }))} /></div>
-              <label className="text-[12px] font-bold text-ink-2">Club<select className={clsx(selectCls, 'mt-1.5 font-normal')} value={f.club} onChange={(e) => set({ club: e.target.value })}><option value="">Todos</option>{afis.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></label>
-              <label className="text-[12px] font-bold text-ink-2">Mascota<select className={clsx(selectCls, 'mt-1.5 font-normal')} value={f.mascota} onChange={(e) => set({ mascota: e.target.value })}><option value="">Todas</option><option value="con">Con alguna mascota</option>{cat?.tiposMascota.filter((t) => t.id !== '01').map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select></label>
-              <label className="text-[12px] font-bold text-ink-2">Ciudad<select className={clsx(selectCls, 'mt-1.5 font-normal')} value={f.ciudad} onChange={(e) => set({ ciudad: e.target.value })}><option value="">Todas</option>{cat?.ciudades.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
-              <label className="text-[12px] font-bold text-ink-2">Problema de calidad<select className={clsx(selectCls, 'mt-1.5 font-normal')} value={f.problema} onChange={(e) => set({ problema: e.target.value })}><option value="">Ninguno</option>{PROBLEMAS.map((p) => <option key={p.id} value={p.id}>{p.titulo}</option>)}</select></label>
-              <label className="text-[12px] font-bold text-ink-2">Etiqueta<input className={clsx(selectCls, 'mt-1.5 font-normal')} value={f.etiqueta} onChange={(e) => set({ etiqueta: e.target.value })} placeholder="Ej.: VIP" /></label>
-              <label className="text-[12px] font-bold text-ink-2">Ficha completa hasta: {f.completitudMax}<input type="range" min={10} max={100} step={10} value={f.completitudMax} onChange={(e) => set({ completitudMax: Number(e.target.value) })} className="mt-2 block w-full accent-[var(--brand)]" aria-label="Completitud máxima" /></label>
+          {/* Filtros en botones desplegables (mismo diseño que la Analítica de clientes). */}
+          <div className="flex flex-wrap items-center gap-2" aria-label="Filtros" role="group">
+            <span className="mr-1 inline-flex items-center gap-1.5 pl-1 text-[12.5px] font-semibold text-ink-3"><SlidersHorizontal size={15} />Filtrar</span>
+            {menus.map((m) => <FiltroMenu key={m.clave} label={m.label} opciones={m.opciones} unico={m.unico} valor={m.valor} onChange={m.cambiar} neutro={m.clave === 'estado' && f.estado.join() === 'activo'} />)}
+            <Desplegable label="Más" activo={!!f.etiqueta || f.completitudMax < 100} n={(f.etiqueta ? 1 : 0) + (f.completitudMax < 100 ? 1 : 0)}
+              resumen={f.etiqueta && f.completitudMax === 100 ? `etiqueta ${f.etiqueta}` : !f.etiqueta && f.completitudMax < 100 ? `ficha hasta ${f.completitudMax}%` : null} ancho={280}>
+              {() => (
+                <div className="space-y-3 p-2">
+                  <label className="block text-[12px] font-semibold text-ink-2">Etiqueta
+                    <input className={clsx(selectCls, 'mt-1.5 font-normal')} value={f.etiqueta} onChange={(e) => set({ etiqueta: e.target.value })} placeholder="Ej.: VIP" /></label>
+                  <label className="block text-[12px] font-semibold text-ink-2">Ficha completa hasta: <b className="text-ink">{f.completitudMax}%</b>
+                    <input type="range" min={10} max={100} step={10} value={f.completitudMax} onChange={(e) => set({ completitudMax: Number(e.target.value) })} className="mt-2 block w-full accent-[var(--brand)]" aria-label="Completitud máxima" /></label>
+                </div>
+              )}
+            </Desplegable>
+          </div>
+          {hayFiltros && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activos.map((a) => <FiltroActivo key={a.clave} texto={a.texto} color={a.color} onQuitar={a.quitar} />)}
+              <Btn small variant="ghost" className="ml-auto" icon={<FilterX size={14} />} onClick={() => { setQ(''); aplicarVista(vista) }}>Limpiar filtros</Btn>
             </div>
           )}
         </div>

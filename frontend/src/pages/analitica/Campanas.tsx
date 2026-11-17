@@ -5,7 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import EChart, { useChartTokens } from '@/charts/EChart'
 import { columnsOption, donutOption, filaTip, fmtV, piramideOption, rankingOption } from '@/charts/builders'
 import { Badge, Btn, Notice } from '@/components/ui'
-import { CANAL_LABEL, fmtCop, fmtCopCorto, fmtFecha, fmtNum, fmtNum1, fmtPct } from '@/lib/format'
+import { CANAL_LABEL, fmtCop, fmtFecha, fmtNum, fmtNum1, fmtPct } from '@/lib/format'
 import { fechaISO, textoVigencia } from '@/lib/programacion'
 import { ChartCard, consulta, Estado, Filtro, Kpi, Seccion, useTablero } from './kit'
 
@@ -138,12 +138,12 @@ export default function AnaliticaCampanas() {
             {cargando ? Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton h-[98px] rounded-2xl" />) : <>
               <Kpi label="Campañas" value={fmtNum(k.campanas)} sub={`${fmtNum(k.publicadas)} publicadas · ${fmtNum(k.programadas)} programadas · ${fmtNum(k.borradores)} borradores`} />
               <Kpi label="Mensajes a enviar" value={fmtNum(k.destinatarios)} sub={`${fmtNum(k.personas_unicas)} personas distintas`} />
-              <Kpi label="Costo estimado" value={fmtCopCorto(k.costo)} sub={`${fmtCop(k.costo_por_contacto)} por persona`} />
+              <Kpi label="Costo estimado" value={fmtCop(k.costo)} sub={`${fmtCop(k.costo_por_contacto)} por persona`} />
               <Kpi label="Grupo de control" value={fmtNum(k.control)} sub="Reservados sin mensaje para medir" />
               <Kpi label="Campañas por persona" value={fmtNum1(k.campanas_por_persona)} sub="Presión de contacto promedio" tone={(k.campanas_por_persona ?? 0) > 2 ? 'warn' : 'good'} />
               <Kpi label="Vigencia promedio" value={k.vigencia_prom != null ? `${fmtNum1(k.vigencia_prom)} días` : '—'} sub={`${fmtNum(k.productos_distintos)} productos promocionados`} />
               <Kpi label="Compraron lo promocionado" value={k.tasa_envio != null ? fmtPct(k.tasa_envio) : '—'} sub={k.medidas ? `Promedio de ${fmtNum(k.medidas)} campaña(s) medidas` : 'Aún sin campañas medibles'} pct={k.tasa_envio} tone="good" />
-              <Kpi label="Efecto real (vs control)" value={k.lift_pp != null ? `${k.lift_pp > 0 ? '+' : ''}${fmtNum1(k.lift_pp)} pp` : '—'} sub={k.incremental != null ? `${fmtCopCorto(k.incremental)} de venta incremental` : 'Requiere grupo de control y ventas'} tone={(k.lift_pp ?? 0) > 0 ? 'good' : 'warn'} />
+              <Kpi label="Efecto real (vs control)" value={k.lift_pp != null ? `${k.lift_pp > 0 ? '+' : ''}${fmtNum1(k.lift_pp)} pp` : '—'} sub={k.incremental != null ? `${fmtCop(k.incremental)} de venta incremental` : 'Requiere grupo de control y ventas'} tone={(k.lift_pp ?? 0) > 0 ? 'good' : 'warn'} />
             </>}
           </div>
         </Seccion>

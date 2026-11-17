@@ -14,13 +14,13 @@ const COLOR_OK = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d\s.,%/-]+\))$/i
 export const safeColor = (c: unknown, fallback = '#8A97A3') => (typeof c === 'string' && COLOR_OK.test(c.trim()) ? c.trim() : fallback)
 
 const nfCorto = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 })
-/** Valor formateado. `corto` abrevia (ejes y etiquetas): 1,2 M · 450 mil. */
+/** Valor formateado. `corto` abrevia SOLO las marcas de los ejes («$20.000 millones», «25,3 mil»); el resto, exacto. */
 export function fmtV(v: unknown, fmt: Fmt, corto = true): string {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : null
   if (n == null) return '—'
   if (fmt === 'money') return corto ? fmtCopCorto(n) : fmtCop(n)
   if (fmt === 'pct') return fmtPct(n)
-  if (corto && Math.abs(n) >= 1e6) return `${nfCorto.format(n / 1e6)} M`
+  if (corto && Math.abs(n) >= 1e6) return `${nfCorto.format(n / 1e6)} millones`
   if (corto && Math.abs(n) >= 1e4) return `${nfCorto.format(n / 1e3)} mil`
   return fmtNum(n)
 }
@@ -36,6 +36,7 @@ const gridBase = { left: 8, right: 16, top: 16, bottom: 8, containLabel: true }
 // ----------------------------------------------------------------- barras horizontales (ranking)
 export function rankingOption(t: ChartTokens, o: {
   categories: string[]; values: (number | null)[]; fmt: Fmt; colors?: string[]; labelWidth?: number
+  margenIzq?: number   // margen extra a la izquierda (etiquetas que se miden antes de cargar la fuente)
   extra?: (i: number) => string   // filas adicionales del tooltip (HTML ya escapado con filaTip)
 }): EChartsCoreOption {
   const cats = [...o.categories].reverse()
@@ -43,7 +44,7 @@ export function rankingOption(t: ChartTokens, o: {
   const cols = o.colors ? [...o.colors].reverse() : undefined
   const n = o.categories.length
   return {
-    grid: { ...gridBase, right: 70, top: 8 },
+    grid: { ...gridBase, left: o.margenIzq ?? gridBase.left, right: o.fmt === 'money' ? 130 : 70, top: 8 },
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow', shadowStyle: { color: t.grid + '88' } },
       formatter: (ps: FP[]) => {
@@ -56,7 +57,7 @@ export function rankingOption(t: ChartTokens, o: {
     series: [{
       type: 'bar', barMaxWidth: 18,
       data: vals.map((v, i) => ({ value: v, itemStyle: { color: safeColor(cols?.[i], t.series[0]), borderRadius: [0, 4, 4, 0] } })),
-      label: { show: true, position: 'right', color: t.ink2, fontSize: 11, formatter: (p: FP) => fmtV(p.value, o.fmt) },
+      label: { show: true, position: 'right', color: t.ink2, fontSize: 11, formatter: (p: FP) => fmtV(p.value, o.fmt, false) },
     }],
   }
 }
@@ -80,7 +81,7 @@ export function donutOption(t: ChartTokens, o: { items: { name: string; value: n
     series: [{
       type: 'pie', radius: abajo ? ['42%', '64%'] : ['55%', '80%'], center: abajo ? ['50%', '40%'] : ['32%', '50%'], avoidLabelOverlap: true,
       itemStyle: { borderColor: t.surface, borderWidth: 2, borderRadius: 4 },
-      label: { show: true, position: 'center', formatter: () => o.centro ?? fmtV(total, o.fmt), fontSize: 16, fontWeight: 700, color: t.ink },
+      label: { show: true, position: 'center', formatter: () => o.centro ?? (o.fmt === 'money' ? '' : fmtV(total, o.fmt, false)), fontSize: 16, fontWeight: 700, color: t.ink },
       emphasis: { scale: false, label: { show: true } },
       data: items.map((x, i) => ({ name: x.name, value: x.value, itemStyle: { color: safeColor(x.color, t.series[i % t.series.length]) } })),
     }],
@@ -90,6 +91,7 @@ export function donutOption(t: ChartTokens, o: { items: { name: string; value: n
 // ----------------------------------------------------------------- columnas agrupadas o apiladas
 export function columnsOption(t: ChartTokens, o: {
   labels: string[]; series: { name: string; data: (number | null)[]; color: string }[]; fmt: Fmt; stacked?: boolean; horizontal?: boolean
+  ejeX?: string   // nombre del eje de categorías (debajo de las barras), p. ej. «Número de compras»
 }): EChartsCoreOption {
   // Pocas categorías: se muestran TODAS las etiquetas (si no, ECharts oculta una sí y una no).
   const cat = { type: 'category', data: o.labels, axisLabel: { hideOverlap: o.labels.length > 10, color: t.ink2, interval: o.horizontal || o.labels.length <= 10 ? 0 : 'auto', fontSize: 11 } }
@@ -97,13 +99,13 @@ export function columnsOption(t: ChartTokens, o: {
   const val = { type: 'value', minInterval: o.fmt === 'int' ? 1 : undefined, axisLabel: { formatter: (v: number) => fmtV(v, o.fmt) } }
   const multi = o.series.length > 1
   return {
-    grid: { ...gridBase, top: multi ? 36 : 16 },
+    grid: { ...gridBase, top: multi ? 36 : 16, bottom: o.ejeX && !o.horizontal ? 26 : gridBase.bottom },
     legend: multi ? { top: 0, left: 0 } : undefined,
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow', shadowStyle: { color: t.grid + '88' } },
       formatter: (ps: FP[]) => titulo(o.labels[ps[0].dataIndex]) + ps.map((p) => filaTip(p.color, p.seriesName, fmtV(p.value, o.fmt, false))).join(''),
     },
-    xAxis: o.horizontal ? val : cat,
+    xAxis: o.horizontal ? val : (o.ejeX ? { ...cat, name: o.ejeX, nameLocation: 'middle', nameGap: 28, nameTextStyle: { color: t.muted, fontSize: 11 } } : cat),
     yAxis: o.horizontal ? { ...cat, inverse: true } : val,
     series: o.series.map((s, i) => ({
       name: s.name, type: 'bar', data: s.data, stack: o.stacked ? 'x' : undefined, barMaxWidth: 34, barGap: '12%',
@@ -184,7 +186,7 @@ export function embudoOption(t: ChartTokens, o: { etapas: { nombre: string; n: n
     series: [{
       type: 'bar', barMaxWidth: 30,
       data: o.etapas.map((e, i) => ({ value: e.n, itemStyle: { color: safeColor(e.color, t.series[i % t.series.length]), borderRadius: [0, 6, 6, 0] } })),
-      label: { show: true, position: 'right', color: t.ink, fontSize: 12, fontWeight: 600, formatter: (p: FP) => `${fmtV(p.value, 'int')} · ${fmtPct((100 * Number(p.value)) / base)}` },
+      label: { show: true, position: 'right', color: t.ink, fontSize: 12, fontWeight: 600, formatter: (p: FP) => `${fmtV(p.value, 'int', false)} · ${fmtPct((100 * Number(p.value)) / base)}` },
     }],
   }
 }
