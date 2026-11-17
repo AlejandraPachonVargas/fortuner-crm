@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .ai.llm import LLMClient, LLMError, cerrar_http
 from .config import ROOT_DIR, get_settings
 from .etl import pipeline
+from .modules.analitica.router import router as analitica_router
 from .modules.campanas.router import router as campanas_router
 from .modules.clientes.router import router as clientes_router
 from .security import SECURITY_HEADERS, require_admin, require_api_key, verificar_configuracion
@@ -163,6 +164,7 @@ async def lanzar_etl(full: bool = False):
 
 app.include_router(campanas_router, dependencies=[Depends(require_api_key)])
 app.include_router(clientes_router, dependencies=[Depends(require_api_key)])
+app.include_router(analitica_router, dependencies=[Depends(require_api_key)])
 
 
 # --------------------------------------------------------------------------------- SPA (producción)

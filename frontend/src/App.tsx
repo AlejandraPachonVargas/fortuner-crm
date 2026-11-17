@@ -1,5 +1,8 @@
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import ApiKeyGate from './components/ApiKeyGate'
+import ErrorBoundary from './components/ErrorBoundary'
+import { Skeleton } from './components/ui'
 import AppShell from './layout/AppShell'
 import Detalle from './pages/campanas/Detalle'
 import Historial from './pages/campanas/Historial'
@@ -18,6 +21,17 @@ function WizardRuta() {
   return <Wizard key={key} />
 }
 
+// La analítica (ECharts) se carga aparte, solo al abrirla: el resto del CRM no carga ese peso.
+const AnaliticaClientes = lazy(() => import('./pages/analitica/Clientes'))
+const AnaliticaCampanas = lazy(() => import('./pages/analitica/Campanas'))
+const cargando = <div className="mx-auto max-w-[1400px] space-y-3"><Skeleton h={60} /><Skeleton h={420} /></div>
+
+/** Un fallo de una gráfica (o de descargar el paquete tras una actualización) queda en esa pantalla: el menú sigue vivo. */
+function Aislada({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation()
+  return <ErrorBoundary resetKey={pathname}><Suspense fallback={cargando}>{children}</Suspense></ErrorBoundary>
+}
+
 export default function App() {
   return (
     <ApiKeyGate>
@@ -32,6 +46,9 @@ export default function App() {
           <Route path="/clientes/calidad" element={<Calidad />} />
           <Route path="/clientes/afiliaciones" element={<Afiliaciones />} />
           <Route path="/clientes/:id" element={<ClienteFicha />} />
+          <Route path="/analitica" element={<Navigate to="/analitica/clientes" replace />} />
+          <Route path="/analitica/clientes" element={<Aislada><AnaliticaClientes /></Aislada>} />
+          <Route path="/analitica/campanas" element={<Aislada><AnaliticaCampanas /></Aislada>} />
           <Route path="*" element={<Navigate to="/campanas" replace />} />
         </Routes>
       </AppShell></RolProvider>

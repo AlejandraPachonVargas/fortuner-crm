@@ -326,6 +326,14 @@ class Indice:
         finally:
             cur.close()
 
+    def arrow(self, sql: str, params: list | tuple = ()) -> pa.Table:
+        """Resultado como tabla Arrow (para cruzarlo con el warehouse sin pasar por Python fila a fila)."""
+        cur = self._cursor()
+        try:
+            return cur.sql(sql, params=list(params)).to_arrow_table()
+        finally:
+            cur.close()
+
     def scalar(self, sql: str, params: list | tuple = ()):
         r = self.query(sql, params)
         return next(iter(r[0].values())) if r else None

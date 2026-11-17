@@ -74,6 +74,22 @@ class Warehouse:
         finally:
             cur.close()
 
+    def consultar_con(self, tablas: dict, consultas: dict[str, tuple[str, list]]) -> dict[str, list[dict]]:
+        """Ejecuta varias consultas en un mismo cursor con tablas Arrow registradas (p. ej. la selección de clientes
+        filtrada en Clientes 360°). El registro vive solo en ese cursor: no se mezcla con otras peticiones."""
+        cur = self._conexion().cursor()
+        try:
+            for nombre, tabla in tablas.items():
+                cur.register(nombre, tabla)
+            out: dict[str, list[dict]] = {}
+            for clave, (sql, params) in consultas.items():
+                res = cur.execute(sql, params or [])
+                cols = [d[0] for d in res.description]
+                out[clave] = [dict(zip(cols, r)) for r in res.fetchall()]
+            return out
+        finally:
+            cur.close()
+
     def scalar(self, sql: str, params: list | tuple | None = None):
         cur = self._conexion().cursor()
         try:

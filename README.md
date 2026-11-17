@@ -20,7 +20,7 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 6. [Despliegue en el servidor Windows](#6-despliegue-en-el-servidor-windows)
 7. [Conexión con ADVANTAGE / Publidata](#7-conexión-con-advantage--publidata)
 8. [Modelo de datos analítico](#8-modelo-de-datos-analítico)
-9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas)
+9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas)
 10. [Cómo se usa la IA (DeepSeek)](#10-cómo-se-usa-la-ia-deepseek)
 11. [Segmentación de clientes](#11-segmentación-de-clientes)
 12. [Auditoría: seguridad y efectividad](#12-auditoría-seguridad-y-efectividad)
@@ -45,7 +45,9 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 | Campañas · vista previa realista (WhatsApp, SMS, correo) | ✅ Listo | Pasos 2 y 4; ver [§9](#9-módulo-campañas-las-5-pantallas) |
 | Campañas · programar publicación + grupo de control + calidad del mensaje | ✅ Listo (**simulada**) | Planificador interno cada 30 s; estado *programada* en el historial |
 | Difusión real (WhatsApp / SMS / correo) | ⏳ Pendiente | Solo recomendaciones por ahora |
-| Medición de resultados / modelo supervisado | ⏳ Pendiente | Requiere difusión real para tener respuestas |
+| Analítica · tablero de clientes y tablero de campañas | ✅ Listo | Menú «Analítica». Ver [§9.2](#92-analítica-tableros-de-clientes-y-de-campañas) |
+| Medición de resultados (envío vs grupo de control) | ✅ Lista (espera difusión real) | Se calcula sola en la Analítica de campañas cuando las ventas cubren la vigencia |
+| Modelo supervisado de respuesta | ⏳ Pendiente | Requiere difusión real para tener respuestas |
 | Clientes 360° (gestor de clientes) | ✅ Conectado a ADVANTAGE (copia de prueba) | Lee y edita `POSCLI`; tablas propias `CRM_*` en un diccionario aparte; catálogos de GANAPTOS. Ver [§9.1](#91-clientes-360-gestor-de-clientes) y [`docs/clientes-360-arquitectura.md`](docs/clientes-360-arquitectura.md) |
 | Automatizaciones | ⏳ Pendiente | Aparece en el menú como «Próximamente» |
 
@@ -343,6 +345,42 @@ Explicación para la empresa: [`docs/clientes-360-arquitectura.md`](docs/cliente
 relaciones implícitas con ventas (`FADITE.IFCLIENTE` trae **cédula o tarjeta**), catálogos `GAN*` ausentes en la copia, diseño de las tablas nuevas `CRM*`,
 mecanismo de escritura segura y preguntas abiertas para los creadores de la base.
 
+## 9.2 Analítica: tableros de clientes y de campañas
+
+Menú **Analítica** (`/analitica/clientes` y `/analitica/campanas`). Mismo motor y estilo que `fortuner-dashboards`
+(ECharts 6 con el tema Fortuner claro/oscuro; cada gráfica con ayuda, vista de tabla accesible y exportación CSV protegida
+contra fórmulas). Solo **cifras agregadas**: nunca nombres, documentos ni datos de contacto. Los filtros quedan en la URL
+(se puede compartir el enlace) y la librería de gráficas se descarga solo al abrir la Analítica.
+
+**Tablero de clientes** (`GET /api/analitica/clientes`, filtros: club, segmento RFM, momento de compra, sexo, edad, ciudad,
+consentimiento; clic en las barras de clubes, segmentos y ciudades también filtra):
+
+| Bloque | Qué muestra | Fuente |
+|---|---|---|
+| Resumen | Clientes, con compras, activos a 90 días, autorizan, contactables, en clubes, ticket, venta, visitas, completitud | Índice de Clientes 360° (POSCLI + `CRM_*`, al día) |
+| Actividad | Clientes por mes (nuevos vs recurrentes), fichas nuevas por mes, venta y gasto por visita mensual | Warehouse (`cli_dia`) + índice |
+| Valor y fidelidad | Segmentos RFM, momento de compra, recencia, frecuencia y ticket | Índice (métricas del warehouse) |
+| Clubes | Socios por club, ticket socios vs no socios, % activos y contactables por club, clientes en varios clubes, clubes que comparten socios, mascotas por tipo, vehículos | `CRM_AFILIACION_CLIENTE`, `CRM_MASCOTA`, `CRM_VEHICULO` |
+| Quiénes y dónde | Pirámide edad × sexo (edad exacta), ciudades, sede de registro | Índice |
+| Cómo compran | Mapa de calor día × hora, día y franja preferidos, categorías (grupo), departamentos, marcas, sedes, sensibilidad al descuento | Warehouse (`cli_dia`, `cli_perfil`, `cli_nivel`, `cli_marca`, `venta`) |
+| Contactabilidad | Embudo clientes → con canal → autorizan → contactables (sin BLOQUE), consentimiento, canales autorizados, completitud | Índice |
+
+**Tablero de campañas** (`GET /api/analitica/campanas`, filtros: periodo por fecha de lanzamiento y estado): campañas por
+mes y estado, destinatarios y costo por mes, mensajes y costo por canal, objetivos, productos y categorías promocionados,
+segmento y edad/sexo de quienes reciben, presión de contacto (personas × campañas), borradores por paso y la tabla de
+todas las campañas con su medición.
+
+**Efectividad (incrementalidad).** Para cada campaña lanzada se toma la ventana de su oferta (vigencia; si no tiene, 7 días
+desde el lanzamiento) y se compara con las ventas del ERP: % del grupo **envío** que compró algún producto promocionado vs %
+del grupo **control** (sin mensaje); venta de esos productos por persona en cada grupo; *venta incremental* =
+(venta por persona envío − control) × personas del envío; *retorno* = incremental ÷ costo. Una campaña queda «sin ventas
+aún» si su vigencia empieza después de la fecha de corte y «parcial» si la cubre a medias.
+
+**Rendimiento.** Población (índice) y comportamiento (warehouse) se calculan en paralelo; la selección filtrada viaja al
+warehouse como tabla Arrow (sin pasar fila a fila por Python). Cada combinación de filtros se guarda 5 minutos en caché
+(clave: filtros + versión del warehouse + carga del índice + huella de campañas); con la base completa, la primera consulta
+tarda ~3–4 s y las siguientes son inmediatas.
+
 ---
 
 ## 10. Cómo se usa la IA (DeepSeek)
@@ -563,4 +601,6 @@ cliente no es un recurso ilimitado: la saturación destruye la base.
 | 2026-11-13 | **Clientes 360° (fase visual).** Gestor de clientes completo sobre datos de demostración: lista con vistas/filtros/acciones masivas/importar/exportar, ficha con 7 pestañas, formulario con validación, baja con regla de integridad (desactivar/anonimizar/eliminar), calidad de datos con cola de trabajo y fusión de duplicados, catálogo de afiliaciones y roles de prueba. 12 pruebas nuevas de validadores y reglas de integridad. Sin conexión a ADVANTAGE: pendiente del análisis del diccionario (§9.1). |
 | 2026-11-13 | **Análisis del diccionario** (`docs/analisis-db-clientes.md`): 114 tablas, `POSCLI` columna por columna, relaciones implícitas, riesgos (`Actu_diccionario.sql` borra columnas de `POSCLI`; `TIDGON` desincronizada). |
 | 2026-11-13 | **Clientes 360° conectado a ADVANTAGE.** Diccionario propio del CRM con 9 tablas `CRM_*` (instalador idempotente), migración inicial (92.045 afiliaciones, 38.809 mascotas, 24.998 vehículos), catálogos de GANAPTOS, índice en memoria, API `/api/clientes` con permisos y auditoría completa, interfaz conectada. *Correcciones en Campañas:* las ventas con **número de tarjeta** ahora se atribuyen al cliente (antes se perdía ~23 % de la venta con cliente); los registros genéricos del POS (CONSUMIDOR FINAL, 2222222222) y los correos genéricos de factura electrónica ya no cuentan como clientes ni como contactables; los clientes inactivos o anonimizados en el CRM no entran en campañas. Respaldo previo en `D:\RESPALDOS_CRM`. 17 pruebas nuevas de backend; prueba de punta a punta sobre la copia sin tocar clientes reales. |
+| 2026-11-17 | **Auditoría fase 2.** Datos: una línea es venta si su artículo es un código de producto (se recupera la serie RO de la sucursal 83 y las series R con productos); recencia y ciclo contra la **fecha de corte** de los datos; edad exacta (años cumplidos) y fecha de nacimiento MMDD+ANON. Consentimiento: «No autoriza» marca `BLOQUE=false` en POSCLI y «Sí autoriza» lo vacía; Campañas verifica consentimiento, BLOQUE, estado, edad y canales contra el ERP en vivo al calcular, publicar y ejecutar las programadas (falla cerrada). Campañas: vigencia obligatoria con marcador `{vigencia}`, sin invitación a responder NO, el asistente ya no arrastra otra campaña. **Después de actualizar: `crm etl`.** |
+| 2026-11-17 | **Analítica (§9.2).** Tablero de clientes (clubes, comportamiento, demografía, contactabilidad) y tablero de campañas (alcance, costo, canales, presión de contacto y efectividad envío vs control). Campo de vigencia: se pueden escribir 31 días o más (hasta 90) y botón «Hasta fin de mes». 8 pruebas nuevas de backend y 5 de frontend. |
 | 2026-11-13 | **Rediseño visual Fortuner 27** (solo visual, `GUIA_REDISENO_MODULOS.md`): logo, paleta y tipografía Poppins de Fortuner; cabecera de dos filas en lugar de la barra lateral (grupos con menú desplegable, también en celular); botones, campos, tarjetas, tablas, insignias, alertas, modales y pestañas con el nuevo aspecto; pantalla de clave de acceso con el diseño de ingreso de Fortuner. Sin cambios de rutas, API, permisos ni lógica. |

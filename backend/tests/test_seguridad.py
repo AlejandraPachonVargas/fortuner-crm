@@ -42,6 +42,15 @@ def test_api_exige_clave_cuando_esta_configurada(monkeypatch, tmp_path):
     assert c.get("/api/campanas", headers={"Authorization": "Bearer clave-de-prueba-123"}).status_code == 200
 
 
+def test_analitica_exige_clave(monkeypatch, tmp_path):
+    c = _cliente(monkeypatch, tmp_path, CRM_API_KEY="clave-de-prueba-123")
+    for ruta in ("/api/analitica/clientes", "/api/analitica/clientes/opciones", "/api/analitica/campanas"):
+        assert c.get(ruta).status_code == 401
+    # Con clave, el tablero de campañas responde aunque aún no haya ventas cargadas (lo avisa en vez de fallar).
+    r = c.get("/api/analitica/campanas", headers={"X-API-Key": "clave-de-prueba-123"})
+    assert r.status_code == 200 and r.json()["kpis"]["campanas"] == 0
+
+
 def test_etl_solo_con_clave_admin(monkeypatch, tmp_path):
     c = _cliente(monkeypatch, tmp_path, CRM_API_KEY="lectura-123", CRM_ADMIN_KEY="admin-456")
     assert c.post("/api/sistema/etl", headers={"X-API-Key": "lectura-123"}).status_code == 403

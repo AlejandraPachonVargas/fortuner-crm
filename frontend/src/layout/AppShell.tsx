@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import {
-  BarChart3, ChevronDown, Gift, History, Megaphone, Moon, MoreHorizontal, PlusCircle, Settings, ShieldCheck, Sun, UserPlus,
-  Users, Workflow, type LucideIcon,
+  BarChart3, ChevronDown, Gift, History, Megaphone, Moon, MoreHorizontal, PieChart, PlusCircle, Settings, ShieldCheck, Sun, TrendingUp,
+  UserPlus, Users, Workflow, type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -27,10 +27,13 @@ const GRUPOS: Grupo[] = [
     { id: 'calidad', label: 'Calidad de datos', to: '/clientes/calidad', icon: ShieldCheck, end: true },
     { id: 'afiliaciones', label: 'Afiliaciones', to: '/clientes/afiliaciones', icon: Gift, end: true },
   ] },
+  { id: 'analitica', label: 'Analítica', icon: BarChart3, prefijo: '/analitica', opciones: [
+    { id: 'an-clientes', label: 'Analítica de clientes', to: '/analitica/clientes', icon: PieChart, end: true },
+    { id: 'an-campanas', label: 'Analítica de campañas', to: '/analitica/campanas', icon: TrendingUp, end: true },
+  ] },
 ]
 const MAS: Grupo = { id: 'mas', label: 'Más', icon: MoreHorizontal, opciones: [
   { id: 'auto', label: 'Automatizaciones', to: '', icon: Workflow, proximamente: true },
-  { id: 'analitica', label: 'Analítica de campañas', to: '', icon: BarChart3, proximamente: true },
   { id: 'config', label: 'Configuración', to: '', icon: Settings, proximamente: true },
 ] }
 

@@ -266,6 +266,30 @@ class Store:
         self.auditar("cancelar_programacion", cid, "", origen)
         return self.obtener(cid)
 
+    def huella(self) -> str:
+        """Cambia cada vez que cambia una campaña o sus destinatarios (clave de caché de la analítica)."""
+        with self._lock:
+            a = self._db.execute("SELECT COUNT(*), MAX(actualizada), MAX(eliminada_en) FROM campana").fetchone()
+            b = self._db.execute("SELECT COUNT(*) FROM destinatario").fetchone()
+        return f"{a[0]}|{a[1]}|{a[2]}|{b[0]}"
+
+    def destinatarios_de(self, cids: list[str]) -> dict[str, list]:
+        """Destinatarios de varias campañas en columnas (campana_id, cliente_id, canales, grupo), listo para Arrow."""
+        out: dict[str, list] = {"campana_id": [], "cliente_id": [], "canales": [], "grupo": []}
+        if not cids:
+            return out
+        with self._lock:
+            for i in range(0, len(cids), 500):
+                lote = cids[i:i + 500]
+                for r in self._db.execute(
+                        f"SELECT campana_id, cliente_id, canales, grupo FROM destinatario WHERE campana_id IN ({','.join('?' * len(lote))})",
+                        lote):
+                    out["campana_id"].append(r[0])
+                    out["cliente_id"].append(r[1])
+                    out["canales"].append(r[2])
+                    out["grupo"].append(r[3])
+        return out
+
     def vencidas(self, ahora: datetime | None = None) -> list[dict]:
         """Campañas programadas cuya hora ya llegó (aún sin ejecutar)."""
         limite = (ahora or datetime.now()).isoformat(timespec="seconds")
