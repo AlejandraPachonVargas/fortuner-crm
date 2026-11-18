@@ -17,6 +17,8 @@ from .ai.llm import LLMClient, LLMError, cerrar_http
 from .config import ROOT_DIR, get_settings
 from .etl import pipeline
 from .modules.analitica.router import router as analitica_router
+from .modules.automatizaciones.motor import ejecutar_pendientes
+from .modules.automatizaciones.router import router as automatizaciones_router
 from .modules.campanas.router import router as campanas_router
 from .modules.clientes.router import router as clientes_router
 from .security import SECURITY_HEADERS, require_admin, require_api_key, verificar_configuracion
@@ -64,6 +66,15 @@ async def _planificador(store) -> None:
             raise
         except Exception:
             log.exception("Falló el planificador de campañas")
+        # Automatizaciones activas cuya hora llegó y que no se han evaluado hoy (en su propio bloque: si una parte falla,
+        # la otra sigue). Sin la lista de clientes del ERP esperan al siguiente ciclo: nunca se envía sin verificar.
+        try:
+            for aid in await asyncio.to_thread(ejecutar_pendientes):
+                log.info("Automatización evaluada (envíos simulados): %s", aid)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Falló el planificador de automatizaciones")
         await asyncio.sleep(30)
 
 
@@ -165,6 +176,7 @@ async def lanzar_etl(full: bool = False):
 app.include_router(campanas_router, dependencies=[Depends(require_api_key)])
 app.include_router(clientes_router, dependencies=[Depends(require_api_key)])
 app.include_router(analitica_router, dependencies=[Depends(require_api_key)])
+app.include_router(automatizaciones_router, dependencies=[Depends(require_api_key)])
 
 
 # --------------------------------------------------------------------------------- SPA (producción)

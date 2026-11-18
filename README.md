@@ -20,7 +20,7 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 6. [Despliegue en el servidor Windows](#6-despliegue-en-el-servidor-windows)
 7. [Conexión con ADVANTAGE / Publidata](#7-conexión-con-advantage--publidata)
 8. [Modelo de datos analítico](#8-modelo-de-datos-analítico)
-9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas)
+9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas) · [9.3 Automatizaciones](#93-automatizaciones)
 10. [Cómo se usa la IA (DeepSeek)](#10-cómo-se-usa-la-ia-deepseek)
 11. [Segmentación de clientes](#11-segmentación-de-clientes)
 12. [Auditoría: seguridad y efectividad](#12-auditoría-seguridad-y-efectividad)
@@ -49,7 +49,7 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 | Medición de resultados (envío vs grupo de control) | ✅ Lista (espera difusión real) | Se calcula sola en la Analítica de campañas cuando las ventas cubren la vigencia |
 | Modelo supervisado de respuesta | ⏳ Pendiente | Requiere difusión real para tener respuestas |
 | Clientes 360° (gestor de clientes) | ✅ Conectado a ADVANTAGE (copia de prueba) | Lee y edita `POSCLI`; tablas propias `CRM_*` en un diccionario aparte; catálogos de GANAPTOS. Ver [§9.1](#91-clientes-360-gestor-de-clientes) y [`docs/clientes-360-arquitectura.md`](docs/clientes-360-arquitectura.md) |
-| Automatizaciones | ⏳ Pendiente | Aparece en el menú como «Próximamente» |
+| Automatizaciones (cumpleaños, bienvenida, segunda compra, reactivación) | ✅ Listo (**simulado**) | Ediciones por periodo con oferta y mensajes propios. Ver [§9.3](#93-automatizaciones) |
 
 ---
 
@@ -381,6 +381,42 @@ warehouse como tabla Arrow (sin pasar fila a fila por Python). Cada combinación
 (clave: filtros + versión del warehouse + carga del índice + huella de campañas); con la base completa, la primera consulta
 tarda ~3–4 s y las siguientes son inmediatas.
 
+## 9.3 Automatizaciones
+
+Menú **Automatizaciones**: campañas que se envían solas cuando un cliente cumple una condición. Los envíos hoy son
+**simulados** (se calculan con los datos reales del ERP y se registran por cliente y día; no se manda ningún mensaje hasta
+conectar la difusión real).
+
+| Tipo | Se dispara | Parámetros (con límites) |
+|---|---|---|
+| Cumpleaños | El día del cumpleaños (fecha de nacimiento del ERP); el 29-feb se saluda el 28 en años no bisiestos | días antes (0–7) |
+| Bienvenida | Cuando se crea la ficha (FECHAI) | días después (0–30) |
+| Segunda compra | N días después de la primera compra, si aún no hay una segunda | días después (1–60) |
+| Reactivación | Cuando lleva sin comprar más de X veces su intervalo habitual | umbral (1,2–6), mínimo de compras, máximo de días sin comprar |
+
+Todos tienen **«no repetir a la misma persona antes de N días»** y **máximo de envíos por día** (prioriza a los de mayor
+valor), además de filtros opcionales por club y segmento.
+
+**Ediciones (personalización por periodo).** Cada automatización tiene ediciones con fechas (p. ej. «Cumpleaños 2026» del
+1-ene al 31-dic: 10 % de descuento; «Cumpleaños 2027»: una torta de regalo). Cada día usa la edición que lo cubre; las
+fechas de dos ediciones no se pueden cruzar, y «Para el año siguiente» copia una edición corrida un año. Una edición
+define: la oferta (descuento en % o en pesos, producto, regalo u otro; el texto que reemplaza a `{oferta}`), la validez en
+días desde el envío (`{vigencia}`), los canales y los mensajes (editor y vista previa de Campañas).
+
+**Reglas que siempre se aplican** (las mismas de Campañas, contra el ERP en vivo y con falla cerrada): solo clientes activos
+que autorizan sus datos y sin BLOQUE; sin menores de edad si la oferta o el mensaje mencionan licor o cigarrillo; solo por
+los canales que el cliente tiene y autorizó. La pantalla **Probar** muestra, para cualquier día y edición, cuántos cumplen
+la condición, cuántos lo recibirían, el costo y cuántos quedan fuera por cada motivo, sin registrar nada.
+
+**Ejecución.** El planificador (cada 30 s) evalúa cada automatización activa una vez al día a su hora. La primera vez solo
+cubre ese día (no le escribe a toda la base de golpe); si el servidor estuvo apagado recupera hasta 3 días. Repetirla el
+mismo día no duplica envíos. Sin la lista de clientes del ERP, espera al siguiente ciclo. «Ejecutar hoy» (sin esperar la
+hora) requiere la clave de administración. Los envíos automáticos cuentan como «contactado recientemente» para las
+campañas y aparecen en la Analítica de campañas.
+
+**Datos** (en `data/crm.sqlite`): `automatizacion`, `automatizacion_edicion`, `automatizacion_ejecucion` y
+`automatizacion_envio` (un registro por cliente y día, con la vigencia de la oferta). API: `/api/automatizaciones`.
+
 ---
 
 ## 10. Cómo se usa la IA (DeepSeek)
@@ -602,5 +638,6 @@ cliente no es un recurso ilimitado: la saturación destruye la base.
 | 2026-11-13 | **Análisis del diccionario** (`docs/analisis-db-clientes.md`): 114 tablas, `POSCLI` columna por columna, relaciones implícitas, riesgos (`Actu_diccionario.sql` borra columnas de `POSCLI`; `TIDGON` desincronizada). |
 | 2026-11-13 | **Clientes 360° conectado a ADVANTAGE.** Diccionario propio del CRM con 9 tablas `CRM_*` (instalador idempotente), migración inicial (92.045 afiliaciones, 38.809 mascotas, 24.998 vehículos), catálogos de GANAPTOS, índice en memoria, API `/api/clientes` con permisos y auditoría completa, interfaz conectada. *Correcciones en Campañas:* las ventas con **número de tarjeta** ahora se atribuyen al cliente (antes se perdía ~23 % de la venta con cliente); los registros genéricos del POS (CONSUMIDOR FINAL, 2222222222) y los correos genéricos de factura electrónica ya no cuentan como clientes ni como contactables; los clientes inactivos o anonimizados en el CRM no entran en campañas. Respaldo previo en `D:\RESPALDOS_CRM`. 17 pruebas nuevas de backend; prueba de punta a punta sobre la copia sin tocar clientes reales. |
 | 2026-11-17 | **Auditoría fase 2.** Datos: una línea es venta si su artículo es un código de producto (se recupera la serie RO de la sucursal 83 y las series R con productos); recencia y ciclo contra la **fecha de corte** de los datos; edad exacta (años cumplidos) y fecha de nacimiento MMDD+ANON. Consentimiento: «No autoriza» marca `BLOQUE=false` en POSCLI y «Sí autoriza» lo vacía; Campañas verifica consentimiento, BLOQUE, estado, edad y canales contra el ERP en vivo al calcular, publicar y ejecutar las programadas (falla cerrada). Campañas: vigencia obligatoria con marcador `{vigencia}`, sin invitación a responder NO, el asistente ya no arrastra otra campaña. **Después de actualizar: `crm etl`.** |
+| 2026-11-18 | **Automatizaciones (§9.3).** Cumpleaños, bienvenida, segunda compra y reactivación, con ediciones por periodo (oferta y mensajes distintos por año), las reglas legales de Campañas, prueba «¿a quién le tocaría?», historial de ejecuciones y planificador diario. Envíos simulados por cliente y día que cuentan como contacto reciente y se ven en la Analítica de campañas. 14 pruebas nuevas de backend. |
 | 2026-11-17 | **Analítica (§9.2).** Tablero de clientes (clubes, comportamiento, demografía, contactabilidad) y tablero de campañas (alcance, costo, canales, presión de contacto y efectividad envío vs control). Campo de vigencia: se pueden escribir 31 días o más (hasta 90) y botón «Hasta fin de mes». 8 pruebas nuevas de backend y 5 de frontend. |
 | 2026-11-13 | **Rediseño visual Fortuner 27** (solo visual, `GUIA_REDISENO_MODULOS.md`): logo, paleta y tipografía Poppins de Fortuner; cabecera de dos filas en lugar de la barra lateral (grupos con menú desplegable, también en celular); botones, campos, tarjetas, tablas, insignias, alertas, modales y pestañas con el nuevo aspecto; pantalla de clave de acceso con el diseño de ingreso de Fortuner. Sin cambios de rutas, API, permisos ni lógica. |

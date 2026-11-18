@@ -25,6 +25,7 @@ interface Tablero {
   borradores_paso: { paso: N; n: N }[]; presion: { campanas: N; personas: N }[]
   perfil: null | { rfm: { id: string; nombre: string; n: N }[]; edad_sexo: { edad: string; sexo: string; n: N }[] }
   campanas_tabla: FilaCampana[]
+  automatizaciones?: { id: string; nombre: string; tipo: string; activa: boolean; envios: N; personas: N; costo: N }[]
 }
 
 const ESTADOS: Record<string, string> = { publicada: 'Publicadas', programada: 'Programadas', borrador: 'Borradores' }
@@ -219,6 +220,27 @@ export default function AnaliticaCampanas() {
               {g && <EChart label="Borradores por paso" option={g.borradores} height={280} />}
             </ChartCard>
           </div>
+        </Seccion>
+
+        <Seccion titulo="Automatizaciones">
+          {(d?.automatizaciones?.length ?? 0) === 0 ? <Notice tone="info">Todavía no hay automatizaciones. Créelas en <Link className="font-semibold underline" to="/automatizaciones">Automatizaciones</Link>.</Notice> : (() => {
+            const au = d!.automatizaciones!
+            const tot = au.reduce((s, x) => ({ envios: s.envios + x.envios, personas: s.personas + x.personas, costo: s.costo + x.costo }), { envios: 0, personas: 0, costo: 0 })
+            return (
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid content-start gap-3">
+                  <Kpi label="Envíos automáticos en el periodo" value={fmtNum(tot.envios)} sub="simulados" />
+                  <Kpi label="Costo estimado" value={fmtCop(tot.costo)} sub={`${fmtNum(au.filter((x) => x.activa).length)} de ${fmtNum(au.length)} activas`} />
+                </div>
+                <ChartCard className="lg:col-span-2" title="Envíos por automatización" subtitle="Envíos simulados en el periodo" height={Math.max(140, au.length * 28 + 30)}
+                  table={{ cols: [{ key: 'nombre', label: 'Automatización' }, { key: 'envios', label: 'Envíos', fmt: 'int' }, { key: 'personas', label: 'Personas', fmt: 'int' }, { key: 'costo', label: 'Costo', fmt: 'money' }], rows: au }}>
+                  <EChart label="Envíos por automatización" height={Math.max(140, au.length * 28 + 30)}
+                    option={rankingOption(t, { fmt: 'int', categories: au.map((x) => x.nombre), values: au.map((x) => x.envios), colors: au.map(() => t.series[1]),
+                      extra: (i) => filaTip(t.compare, 'Personas', fmtV(au[i].personas, 'int', false)) + filaTip(t.compare, 'Costo estimado', fmtV(au[i].costo, 'money', false)) })} />
+                </ChartCard>
+              </div>
+            )
+          })()}
         </Seccion>
 
         <Seccion titulo="Detalle de las campañas">

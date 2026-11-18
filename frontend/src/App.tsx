@@ -4,6 +4,9 @@ import ApiKeyGate from './components/ApiKeyGate'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Skeleton } from './components/ui'
 import AppShell from './layout/AppShell'
+import DetalleAutomatizacion from './pages/automatizaciones/Detalle'
+import EdicionEditor from './pages/automatizaciones/EdicionEditor'
+import ListaAutomatizaciones, { NuevaAutomatizacion } from './pages/automatizaciones/Lista'
 import Detalle from './pages/campanas/Detalle'
 import Historial from './pages/campanas/Historial'
 import Wizard from './pages/campanas/Wizard'
@@ -46,6 +49,10 @@ export default function App() {
           <Route path="/clientes/calidad" element={<Calidad />} />
           <Route path="/clientes/afiliaciones" element={<Afiliaciones />} />
           <Route path="/clientes/:id" element={<ClienteFicha />} />
+          <Route path="/automatizaciones" element={<ListaAutomatizaciones />} />
+          <Route path="/automatizaciones/nueva" element={<NuevaAutomatizacion />} />
+          <Route path="/automatizaciones/:id" element={<DetalleAutomatizacion />} />
+          <Route path="/automatizaciones/:id/edicion/:eid" element={<EdicionEditor />} />
           <Route path="/analitica" element={<Navigate to="/analitica/clientes" replace />} />
           <Route path="/analitica/clientes" element={<Aislada><AnaliticaClientes /></Aislada>} />
           <Route path="/analitica/campanas" element={<Aislada><AnaliticaCampanas /></Aislada>} />

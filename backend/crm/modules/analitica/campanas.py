@@ -200,7 +200,19 @@ def _calcular(f: dict, meta: dict) -> dict:
         "borradores_paso": [{"paso": p, "n": borradores_paso.get(p, 0)} for p in (1, 2, 3, 4)],
         "presion": [{"campanas": k, "personas": presion.get(k, 0)} for k in (1, 2, 3, 4)],
         "perfil": perfil, "campanas_tabla": filas,
+        # Automatizaciones (envíos simulados por cliente y día) en el mismo periodo.
+        "automatizaciones": _automatizaciones(f),
     }
+
+
+def _automatizaciones(f: dict) -> list[dict]:
+    from ..automatizaciones.almacen import get_almacen
+
+    try:
+        return get_almacen().por_automatizacion(f["desde"], f["hasta"])
+    except Exception:
+        log.exception("No se pudieron leer las automatizaciones")
+        return []
 
 
 def _cruce(lanzadas: list, dest: dict, corte: date | None) -> tuple[dict, dict]:

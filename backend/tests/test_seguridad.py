@@ -51,6 +51,19 @@ def test_analitica_exige_clave(monkeypatch, tmp_path):
     assert r.status_code == 200 and r.json()["kpis"]["campanas"] == 0
 
 
+def test_automatizaciones_exigen_clave_y_ejecutar_exige_admin(monkeypatch, tmp_path):
+    c = _cliente(monkeypatch, tmp_path, CRM_API_KEY="clave-de-prueba-123", CRM_ADMIN_KEY="clave-admin-456789")
+    assert c.get("/api/automatizaciones").status_code == 401
+    h = {"X-API-Key": "clave-de-prueba-123"}
+    assert c.get("/api/automatizaciones/tipos", headers=h).status_code == 200
+    r = c.post("/api/automatizaciones", json={"tipo": "cumpleanos"}, headers=h)
+    assert r.status_code == 201 and r.json()["ediciones"][0]["nombre"].startswith("Cumpleaños")
+    assert c.post("/api/automatizaciones", json={"tipo": "otro"}, headers=h).status_code == 422
+    aid = r.json()["id"]
+    assert c.post(f"/api/automatizaciones/{aid}/ejecutar", headers=h).status_code == 403          # solo administración
+    assert c.get("/api/automatizaciones/noexiste", headers=h).status_code == 404
+
+
 def test_etl_solo_con_clave_admin(monkeypatch, tmp_path):
     c = _cliente(monkeypatch, tmp_path, CRM_API_KEY="lectura-123", CRM_ADMIN_KEY="admin-456")
     assert c.post("/api/sistema/etl", headers={"X-API-Key": "lectura-123"}).status_code == 403

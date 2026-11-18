@@ -1,12 +1,16 @@
 import clsx from 'clsx'
 import { Check, Mail, MessageCircle, MessageSquareText, PenLine, PenSquare, Settings2, Sparkles, Wand2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Badge, Btn, Card, ErrorBox, Notice } from '@/components/ui'
 import VistaCanales from '@/components/VistaCanales'
 import { api, type Mensaje, type Producto, type Textos } from '@/lib/api'
 import { fmtNum } from '@/lib/format'
 
-interface Props { mensaje: Mensaje; onChange: (m: Mensaje) => void; productos: Producto[]; temporadaId: string | null }
+interface Props {
+  mensaje: Mensaje; onChange: (m: Mensaje) => void; productos: Producto[]; temporadaId: string | null
+  /** Automatizaciones: sin redacción con IA (no conoce {oferta}), con marcadores propios y la vista previa resuelta. */
+  sinIa?: boolean; marcadores?: ReactNode; oferta?: string; vigencia?: string | null
+}
 
 interface Validacion {
   whatsapp?: { caracteres: number; ok: boolean; avisos: string[] }
@@ -26,7 +30,7 @@ const TONOS = ['Cercano y cálido', 'Urgente', 'Elegante y premium', 'Festivo y 
 
 const area = 'w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/15'
 
-export default function PasoMensaje({ mensaje, onChange, productos, temporadaId }: Props) {
+export default function PasoMensaje({ mensaje, onChange, productos, temporadaId, sinIa, marcadores, oferta, vigencia }: Props) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<unknown>(null)
   const [val, setVal] = useState<Validacion>({})
@@ -55,7 +59,7 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
     } catch (e) { setErr(e) } finally { setBusy(false) }
   }
   const tiene = Boolean(mensaje.textos.whatsapp?.texto || mensaje.textos.sms?.texto || mensaje.textos.email?.cuerpo)
-  const ia = mensaje.modo === 'ia'
+  const ia = mensaje.modo === 'ia' && !sinIa
   const elegidos = CANALES.filter((c) => mensaje.canales.includes(c.id))
   const activo: Canal = elegidos.some((c) => c.id === canal) ? canal : (elegidos[0]?.id ?? 'whatsapp')
   const cuenta = (c: Canal) => {
@@ -64,13 +68,24 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
     return val.email ? `Asunto ${val.email.asunto_caracteres} · cuerpo ${fmtNum(val.email.cuerpo_caracteres)}` : ''
   }
   const avisos = (val[activo]?.avisos ?? [])
+  // Vista previa con {oferta} ya reemplazada (Automatizaciones); {nombre} y {vigencia} los resuelve VistaCanales.
+  const vista = useMemo<Mensaje>(() => {
+    if (!oferta) return mensaje
+    const r = (t?: string) => (t ?? '').replace(/\{oferta\}/gi, oferta)
+    const t = mensaje.textos
+    return { ...mensaje, textos: {
+      ...(t.whatsapp ? { whatsapp: { texto: r(t.whatsapp.texto) } } : {}),
+      ...(t.sms ? { sms: { texto: r(t.sms.texto) } } : {}),
+      ...(t.email ? { email: { ...t.email, asunto: r(t.email.asunto), preheader: r(t.email.preheader), cuerpo: r(t.email.cuerpo) } } : {}),
+    } }
+  }, [mensaje, oferta])
 
   return (
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
       <div className="min-w-0 space-y-5">
         <Card icon={<Settings2 size={18} />} title="Configura tu mensaje" subtitle="Cómo lo redactas y por dónde lo difundes">
           <div className="space-y-5">
-            <div role="radiogroup" aria-label="Modo de redacción" className="grid gap-2.5 sm:grid-cols-2">
+            {!sinIa && <div role="radiogroup" aria-label="Modo de redacción" className="grid gap-2.5 sm:grid-cols-2">
               {([['ia', Sparkles, 'Redactar con IA', 'Escribe las 3 versiones por ti. Consume tokens.'],
                 ['manual', PenLine, 'Mi redacción es la final', 'Escribes tú el texto. No consume tokens.']] as const).map(([id, Icon, t, d]) => (
                 <button key={id} type="button" role="radio" aria-checked={mensaje.modo === id} onClick={() => set({ modo: id })}
@@ -80,7 +95,7 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
                   <span><span className="block text-[13.5px] font-bold text-ink">{t}</span><span className="block text-[11.5px] text-ink-3">{d}</span></span>
                 </button>
               ))}
-            </div>
+            </div>}
 
             <div>
               <div className="mb-2 text-[12.5px] font-bold text-ink-2">Canales de difusión <span className="font-normal text-ink-3">· cada canal tiene un costo distinto</span></div>
@@ -133,7 +148,7 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
         )}
 
         <Card icon={<PenSquare size={18} />} title={ia ? 'Revisa y ajusta' : 'Escribe tu mensaje'}
-          subtitle={<>Usa <code className="rounded bg-surface-2 px-1">{'{nombre}'}</code> para personalizar y <code className="rounded bg-surface-2 px-1">{'{vigencia}'}</code> para las fechas de validez de la oferta.</>}>
+          subtitle={marcadores ?? <>Usa <code className="rounded bg-surface-2 px-1">{'{nombre}'}</code> para personalizar y <code className="rounded bg-surface-2 px-1">{'{vigencia}'}</code> para las fechas de validez de la oferta.</>}>
           {elegidos.length === 0 ? <p className="text-[13px] text-ink-3">Elige un canal arriba para empezar.</p> : (
             <div className="space-y-4">
               <div role="tablist" aria-label="Canal que estás editando" className="flex gap-1 border-b border-line">
@@ -179,7 +194,7 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId 
 
       <div className="min-w-0 xl:sticky xl:top-0 xl:max-h-[calc(100vh-8rem)] xl:overflow-y-auto xl:pr-1 scroll-thin">
         <Card title="Así lo verá el cliente" subtitle="Se actualiza mientras escribes">
-          <VistaCanales mensaje={mensaje} productos={productos} canal={activo} onCanal={(c) => setCanal(c as Canal)} />
+          <VistaCanales mensaje={vista} productos={productos} vigencia={vigencia} canal={activo} onCanal={(c) => setCanal(c as Canal)} />
         </Card>
       </div>
     </div>

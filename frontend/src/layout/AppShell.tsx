@@ -27,13 +27,16 @@ const GRUPOS: Grupo[] = [
     { id: 'calidad', label: 'Calidad de datos', to: '/clientes/calidad', icon: ShieldCheck, end: true },
     { id: 'afiliaciones', label: 'Afiliaciones', to: '/clientes/afiliaciones', icon: Gift, end: true },
   ] },
+  { id: 'automatizaciones', label: 'Automatizaciones', icon: Workflow, prefijo: '/automatizaciones', opciones: [
+    { id: 'auto-lista', label: 'Mis automatizaciones', to: '/automatizaciones', icon: Workflow, end: true },
+    { id: 'auto-nueva', label: 'Nueva automatización', to: '/automatizaciones/nueva', icon: PlusCircle, end: true },
+  ] },
   { id: 'analitica', label: 'Analítica', icon: BarChart3, prefijo: '/analitica', opciones: [
     { id: 'an-clientes', label: 'Analítica de clientes', to: '/analitica/clientes', icon: PieChart, end: true },
     { id: 'an-campanas', label: 'Analítica de campañas', to: '/analitica/campanas', icon: TrendingUp, end: true },
   ] },
 ]
 const MAS: Grupo = { id: 'mas', label: 'Más', icon: MoreHorizontal, opciones: [
-  { id: 'auto', label: 'Automatizaciones', to: '', icon: Workflow, proximamente: true },
   { id: 'config', label: 'Configuración', to: '', icon: Settings, proximamente: true },
 ] }
 

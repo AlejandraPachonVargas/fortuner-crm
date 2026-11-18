@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings, get_settings
+from .modules.automatizaciones.esquema import DDL as _DDL_AUTOMATIZACIONES
 
 ESTADOS = ("borrador", "programada", "publicada")
 
@@ -67,7 +68,7 @@ CREATE TABLE IF NOT EXISTS auditoria (
     detalle    TEXT,
     origen     TEXT
 );
-"""
+""" + _DDL_AUTOMATIZACIONES
 
 _JSON_COLS = ("productos", "mensaje", "segmentacion")
 
@@ -267,11 +268,13 @@ class Store:
         return self.obtener(cid)
 
     def huella(self) -> str:
-        """Cambia cada vez que cambia una campaña o sus destinatarios (clave de caché de la analítica)."""
+        """Cambia cada vez que cambia una campaña, sus destinatarios o una automatización (clave de caché de la analítica)."""
         with self._lock:
             a = self._db.execute("SELECT COUNT(*), MAX(actualizada), MAX(eliminada_en) FROM campana").fetchone()
             b = self._db.execute("SELECT COUNT(*) FROM destinatario").fetchone()
-        return f"{a[0]}|{a[1]}|{a[2]}|{b[0]}"
+            c = self._db.execute("SELECT COUNT(*), MAX(actualizada), MAX(eliminada_en) FROM automatizacion").fetchone()
+            d = self._db.execute("SELECT COUNT(*) FROM automatizacion_envio").fetchone()
+        return f"{a[0]}|{a[1]}|{a[2]}|{b[0]}|{c[0]}|{c[1]}|{c[2]}|{d[0]}"
 
     def destinatarios_de(self, cids: list[str]) -> dict[str, list]:
         """Destinatarios de varias campañas en columnas (campana_id, cliente_id, canales, grupo), listo para Arrow."""
@@ -340,14 +343,15 @@ class Store:
         return out
 
     def contactados_recientes(self, dias: int) -> set[str]:
-        """Clientes que recibieron (o recibirán, si está programada) una campaña en los últimos ``dias`` días.
-        El grupo de control no cuenta: a esos clientes no se les envió nada."""
+        """Clientes que recibieron (o recibirán, si está programada) una campaña, o un mensaje de una automatización, en los
+        últimos ``dias`` días. El grupo de control no cuenta: a esos clientes no se les envió nada."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT DISTINCT d.cliente_id FROM destinatario d JOIN campana c ON c.id = d.campana_id "
                 "WHERE c.eliminada_en IS NULL AND d.grupo = 'envio' AND c.estado IN ('publicada', 'programada') "
-                "AND replace(COALESCE(c.publicada_en, c.programada_para), 'T', ' ') >= datetime('now', 'localtime', ?)",
-                (f"-{int(dias)} days",)).fetchall()
+                "AND replace(COALESCE(c.publicada_en, c.programada_para), 'T', ' ') >= datetime('now', 'localtime', ?) "
+                "UNION SELECT cliente_id FROM automatizacion_envio WHERE fecha >= date('now', 'localtime', ?)",
+                (f"-{int(dias)} days", f"-{int(dias)} days")).fetchall()
         return {r[0] for r in rows}
 
     def campanas_de_clientes(self, cliente_ids: list[str], limite: int = 50) -> list[dict]:
