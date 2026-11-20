@@ -84,7 +84,10 @@ uno AS (   -- TIDSAL repite el producto por bodega: un registro maestro por SKU
 stock AS (
     SELECT clean(INARTIC) AS producto_id,
            SUM(GREATEST(num(INSALDO00), 0)) AS stock_actual,
-           BOOL_OR(UPPER(COALESCE(clean(INACTIVO), 'A')) = 'A' AND COALESCE(UPPER(clean(INBLOQUEO)), '') NOT IN ('Z', 'B')) AS activo
+           -- Activo = en alguna bodega INACTIVO = 'A'. INBLOQUEO = 'Z' NO es un bloqueo: lo tiene la mitad del catálogo,
+           -- incluidos los más vendidos (p. ej. todos los aguardientes). Antes se tomaba como bloqueado y ocultaba 11 mil
+           -- productos con ventas recientes. Solo 'B' se trata como bloqueo.
+           BOOL_OR(UPPER(COALESCE(clean(INACTIVO), 'A')) = 'A' AND COALESCE(UPPER(clean(INBLOQUEO)), '') <> 'B') AS activo
     FROM sal GROUP BY ALL
 ),
 jer AS (   -- jerarquía comercial = la de su última venta

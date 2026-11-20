@@ -204,7 +204,8 @@ export function piramideOption(t: ChartTokens, o: { bandas: string[]; mujeres: n
     xAxis: { type: 'value', min: -max, max, axisLabel: { formatter: (v: number) => fmtV(Math.abs(v), 'int') } },
     yAxis: { type: 'category', data: o.bandas, axisTick: { show: false } },
     series: [
-      { name: 'Mujeres', type: 'bar', stack: 'p', barMaxWidth: 22, data: o.mujeres.map((v) => -v), itemStyle: { color: t.series[4], borderRadius: [4, 0, 0, 4] } },
+      // Mujeres en menta y hombres en azul: los dos tonos de la paleta Fortuner con más contraste (violeta y azul se confundían).
+      { name: 'Mujeres', type: 'bar', stack: 'p', barMaxWidth: 22, data: o.mujeres.map((v) => -v), itemStyle: { color: t.series[1], borderRadius: [4, 0, 0, 4] } },
       { name: 'Hombres', type: 'bar', stack: 'p', barMaxWidth: 22, data: o.hombres, itemStyle: { color: t.series[0], borderRadius: [0, 4, 4, 0] } },
     ],
   }

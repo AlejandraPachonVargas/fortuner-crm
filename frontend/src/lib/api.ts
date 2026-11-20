@@ -80,6 +80,12 @@ export interface Producto {
   ultima_venta?: string | null; unidades_90d?: number; venta_90d?: number; dias_sin_venta?: number | null
   cobertura_dias?: number | null; capital_inmovilizado?: number
   razon?: string; fuente?: string; causa?: string; descuento_sugerido?: number; margen_pct?: number; hist_unidades?: number
+  activo?: boolean; descuento_calculo?: CalculoDescuento
+}
+/** Cómo se llegó al descuento sugerido (lo arma el servidor con el precio y el último costo del ERP). */
+export interface CalculoDescuento {
+  precio: number; costo: number; margen_pct: number; factor_pct: number; tope_pct: number; posible_pct: number; descuento_pct: number
+  limitado_por_tope: boolean; precio_con_descuento: number; ganancia_antes: number; ganancia_despues: number; margen_despues_pct: number
 }
 export interface Opcion { codigo: string; nombre: string; productos: number }
 export interface Filtros { familias: Opcion[]; departamentos: Opcion[]; grupos: Opcion[]; secciones: Opcion[]; tipos: Opcion[]; marcas: Opcion[] }

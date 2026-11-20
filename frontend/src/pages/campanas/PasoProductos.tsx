@@ -1,8 +1,8 @@
 import clsx from 'clsx'
-import { Boxes, CalendarDays, Check, Info, Plus, Search, Sparkles, TrendingDown, X } from 'lucide-react'
+import { Boxes, Calculator, CalendarDays, Check, Info, Plus, Search, Sparkles, TrendingDown, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Btn, Card, Empty, ErrorBox, Field, MultiSelect, Notice, SearchInput, Skeleton, Spinner } from '@/components/ui'
-import { api, useGet, type Filtros, type Producto, type Temporada } from '@/lib/api'
+import { api, useGet, type CalculoDescuento, type Filtros, type Producto, type Temporada } from '@/lib/api'
 import { fmtCop, fmtFecha, fmtNum } from '@/lib/format'
 
 interface Props { value: Producto[]; onChange: (p: Producto[]) => void; temporadaId: string | null; onTemporada: (id: string | null) => void }
@@ -75,7 +75,8 @@ function ProductoFila({ p, checked, onToggle, extra }: FilaProps) {
         {checked && <Check size={13} strokeWidth={3.5} />}
       </button>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-[13px] font-semibold text-ink">{p.producto}</span><span className="text-[11.5px] text-ink-3">{p.marca}</span></div>
+        <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-[13px] font-semibold text-ink">{p.producto}</span><span className="text-[11.5px] text-ink-3">{p.marca}</span>
+          {p.activo === false && <Badge tone="warn" title="El ERP lo tiene marcado como inactivo. Verifique que se siga vendiendo antes de promocionarlo.">Inactivo en el ERP</Badge>}</div>
         <div className="mt-0.5 text-[11.5px] text-ink-3">{[p.departamento, p.grupo].filter(Boolean).join(' › ')}</div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-ink-2">
           <span className="font-semibold tnum">{p.precio_venta > 0 ? fmtCop(p.precio_venta) : <Badge tone="warn">Sin precio</Badge>}</span>
@@ -90,6 +91,29 @@ function ProductoFila({ p, checked, onToggle, extra }: FilaProps) {
 }
 
 interface TabProps { sel: Set<string>; toggle: (p: Producto) => void; addMany: (ps: Producto[]) => void }
+
+/** «¿Cómo se calculó?»: el descuento sugerido paso a paso, con los valores reales del producto. */
+function ComoSeCalculo({ c }: { c: CalculoDescuento }) {
+  const pct = (v: number) => `${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(v)} %`   // 2 decimales: la cuenta cuadra exacta
+  return (
+    <details className="group rounded-lg border border-line px-2.5 py-1.5 text-[12px] text-ink-2">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 font-semibold text-brand marker:hidden">
+        <Calculator size={13} />¿Cómo se calculó el {c.descuento_pct} %?
+        <span className="font-normal text-ink-3 group-open:hidden">· ver el cálculo</span>
+      </summary>
+      <ol className="mt-2 list-decimal space-y-1.5 pl-5">
+        <li><b className="text-ink">Margen actual.</b> Precio {fmtCop(c.precio)} − último costo {fmtCop(c.costo)} = {fmtCop(c.ganancia_antes)} de ganancia por unidad, que es el <b className="text-ink">{pct(c.margen_pct)}</b> del precio.</li>
+        <li><b className="text-ink">Cuánto se puede ceder.</b> Hasta el {c.factor_pct} % de ese margen: {pct(c.margen_pct)} × {c.factor_pct} % = <b className="text-ink">{pct(c.posible_pct)}</b>. Así siempre se conserva al menos el {100 - c.factor_pct} % de la ganancia.</li>
+        <li><b className="text-ink">Tope.</b> Nunca más del {c.tope_pct} %, para no devaluar el producto ante el cliente.
+          {' '}{c.limitado_por_tope ? <>Como {pct(c.posible_pct)} supera el tope, se sugiere <b className="text-ink">{c.descuento_pct} %</b>.</> : <>Queda en <b className="text-ink">{c.descuento_pct} %</b> (redondeado).</>}</li>
+        <li><b className="text-ink">Resultado.</b> {c.descuento_pct > 0
+          ? <>Precio con descuento {fmtCop(c.precio_con_descuento)}: la ganancia por unidad pasa de {fmtCop(c.ganancia_antes)} a <b className="text-ink">{fmtCop(c.ganancia_despues)}</b> (margen {pct(c.margen_despues_pct)}).</>
+          : <>Sin margen positivo sobre el último costo, no hay espacio para descontar sin vender a pérdida.</>}</li>
+      </ol>
+      <p className="mt-2 text-[11.5px] text-ink-3">Es un máximo referencial para mover el inventario: se puede ofrecer menos. Valídelo con compras (el costo es el de la última compra registrada en el ERP).</p>
+    </details>
+  )
+}
 
 // ------------------------------------------------------------------------------ pestaña 1: temporada + IA
 interface RespTemporada {
@@ -226,6 +250,7 @@ function TabInventario({ sel, toggle, addMany }: TabProps) {
                         {(p.descuento_sugerido ?? 0) === 0 && <Badge title="El margen sobre el último costo no permite descontar">Sin margen para descuento</Badge>}
                       </div>
                       <p className="flex items-start gap-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] text-ink-2"><Boxes size={12} className="mt-0.5 shrink-0 text-warn" />{p.razon}</p>
+                      {p.descuento_calculo && <ComoSeCalculo c={p.descuento_calculo} />}
                     </div>
                   )} />
               ))}

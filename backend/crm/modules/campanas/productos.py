@@ -33,7 +33,7 @@ p.producto_id, p.ean, p.producto, p.marca, p.tipo_producto,
 p.familia_id, p.familia, p.departamento_id, p.departamento, p.grupo_id, p.grupo, p.seccion_id, p.seccion,
 p.precio_venta, p.costo_ultima_compra, p.stock_actual, p.activo,
 s.ultima_venta, s.unidades_30d, s.unidades_90d, s.venta_90d, s.venta_total,
-date_diff('day', s.ultima_venta, m.hoy) AS dias_sin_venta,
+GREATEST(0, date_diff('day', s.ultima_venta, m.hoy)) AS dias_sin_venta,   -- hay líneas sueltas posteriores al corte: nunca negativo
 CASE WHEN s.unidades_90d > 0 THEN p.stock_actual / (s.unidades_90d / 90.0) END AS cobertura_dias,
 p.stock_actual * p.costo_ultima_compra AS capital_inmovilizado
 """
@@ -80,8 +80,11 @@ def opciones_filtros(wh: Warehouse) -> dict:
 def buscar(wh: Warehouse, f: dict) -> dict:
     """Búsqueda con todos los filtros. Todo valor viaja como parámetro; el orden sale de una lista blanca."""
     where, params = ["1=1"], []
-    if f.get("solo_activos", True):
-        where.append("p.activo")
+    # Buscar por nombre o código revisa TODO el catálogo: la marca «inactivo» del ERP no es confiable (hay productos que
+    # se venden a diario marcados así) y lo que se busca por nombre se tiene que encontrar. Sin texto, «solo activos»
+    # también incluye lo que se vendió en los últimos 90 días.
+    if f.get("solo_activos", True) and not (f.get("q") or "").strip():
+        where.append("(p.activo OR s.unidades_90d > 0)")
     if f.get("solo_con_stock"):
         where.append("p.stock_actual > 0")
     if f.get("solo_con_ventas"):
@@ -122,6 +125,31 @@ def _fmt_cop(v: float) -> str:
     return "$" + f"{v:,.0f}".replace(",", ".")
 
 
+FACTOR_DESCUENTO = 0.6   # se puede ceder hasta el 60 % del margen (se conserva al menos el 40 %)
+TOPE_DESCUENTO = 0.30    # nunca más del 30 %: descuentos mayores devalúan el producto ante el cliente
+
+
+def calculo_descuento(precio: float | None, costo: float | None) -> dict:
+    """Descuento máximo sugerido para mover inventario, con cada paso del cálculo (para mostrarlo en pantalla):
+
+    1. margen = (precio − último costo) ÷ precio
+    2. descuento posible = margen × 60 %   (se conserva al menos el 40 % del margen)
+    3. descuento sugerido = el menor entre el anterior y el tope de 30 %, redondeado a entero (nunca negativo)
+    """
+    precio, costo = float(precio or 0), float(costo or 0)
+    margen = (precio - costo) / precio if precio > 0 else 0.0
+    posible = max(0.0, margen * FACTOR_DESCUENTO)
+    desc = round(min(TOPE_DESCUENTO, posible) * 100)
+    con_desc = precio * (1 - desc / 100)
+    return {
+        "precio": round(precio), "costo": round(costo), "margen_pct": round(margen * 100, 2),
+        "factor_pct": round(FACTOR_DESCUENTO * 100), "tope_pct": round(TOPE_DESCUENTO * 100),
+        "posible_pct": round(posible * 100, 2), "descuento_pct": desc, "limitado_por_tope": posible > TOPE_DESCUENTO,
+        "precio_con_descuento": round(con_desc), "ganancia_antes": round(precio - costo), "ganancia_despues": round(con_desc - costo),
+        "margen_despues_pct": round((con_desc - costo) / con_desc * 100, 2) if con_desc > 0 else 0.0,
+    }
+
+
 def recomendar_inventario(wh: Warehouse, limite: int = 20, f: dict | None = None) -> dict:
     """Productos con exceso de inventario o sin rotación, con la causa de la recomendación."""
     f = f or {}
@@ -142,10 +170,8 @@ def recomendar_inventario(wh: Warehouse, limite: int = 20, f: dict | None = None
     for r in filas:
         r = _limpio(r)
         stock, cap = r["stock_actual"], r["capital_inmovilizado"] or 0
-        precio, costo = r["precio_venta"], r["costo_ultima_compra"]
-        margen = (precio - costo) / precio if precio else 0
-        # Descuento máximo referencial: conserva al menos el 40 % del margen y nunca baja de 0 %.
-        desc = round(max(0.0, min(0.30, margen * 0.6)) * 100)
+        calc = calculo_descuento(r["precio_venta"], r["costo_ultima_compra"])
+        margen, desc = calc["margen_pct"] / 100, calc["descuento_pct"]
         dias, u90 = r["dias_sin_venta"], r["unidades_90d"] or 0
         if u90 <= 0:
             causa = "sin_rotacion"
@@ -158,10 +184,11 @@ def recomendar_inventario(wh: Warehouse, limite: int = 20, f: dict | None = None
         else:
             causa = "baja_rotacion"
             razon = f"Rotación en caída: última venta hace {dias} días con {stock:,.0f} unidades en stock ({_fmt_cop(cap)})."
-        r.update(causa=causa, razon=razon, margen_pct=round(margen * 100, 1), descuento_sugerido=desc, fuente="datos")
+        r.update(causa=causa, razon=razon, margen_pct=round(margen * 100, 1), descuento_sugerido=desc, descuento_calculo=calc, fuente="datos")
         items.append(r)
     return {"fuente": "datos", "items": items,
-            "nota": "Descuento sugerido = referencial: conserva al menos 40 % del margen sobre el último costo. Valídelo con compras."}
+            "nota": f"Descuento sugerido = {FACTOR_DESCUENTO * 100:.0f} % del margen sobre el último costo, con tope de "
+                    f"{TOPE_DESCUENTO * 100:.0f} %: así se conserva al menos el {(1 - FACTOR_DESCUENTO) * 100:.0f} % del margen. Es referencial: valídelo con compras."}
 
 
 # ---------------------------------------------------------------------------- recomendación por temporada
