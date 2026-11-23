@@ -77,6 +77,7 @@ def entorno(tmp_path, monkeypatch):
     monkeypatch.setattr(motor, "get_warehouse", lambda: wh)
     estado = {"r": _r()}
     monkeypatch.setattr(motor, "restricciones_contacto", lambda: estado["r"])
+    monkeypatch.setattr(motor, "canales_disponibles", lambda: estado.get("canales", {"whatsapp", "sms", "email"}))
     return store, alm, estado
 
 
@@ -226,3 +227,14 @@ def test_planificador_respeta_hora_y_falla_cerrada(entorno, monkeypatch):
     monkeypatch.setattr(motor, "restricciones_contacto", lambda: _r())
     assert motor.ejecutar_pendientes(datetime(2026, 11, 18, 9, 0)) == [a["id"]]
     assert motor.ejecutar_pendientes(datetime(2026, 11, 18, 15, 0)) == []              # ya se evaluó hoy
+
+
+def test_sin_canales_configurados_no_envia(entorno):
+    _, alm, estado = entorno
+    a = _cumple(alm)
+    estado["canales"] = set()                                    # nada configurado en Configuración
+    r = motor.ejecutar(a["id"], fecha=HOY)
+    assert r["estado"] == "sin_canal" and alm.ejecuciones(a["id"])[0]["estado"] == "sin_canal"
+    estado["canales"] = {"email"}                               # solo correo: los demás canales se ignoran
+    r = motor.ejecutar(a["id"], fecha=HOY, probar=True)
+    assert r["estado"] == "ok" and r["por_canal"]["whatsapp"] == 0 and r["por_canal"]["sms"] == 0 and "aviso_canales" in r

@@ -21,6 +21,8 @@ dependencies = [
     "python-dotenv>=1.0,<2",
     # Fotos de producto: validar y convertir a WebP al importarlas (crm imagenes importar).
     "pillow>=11,<14",
+    # Configuración: cifrado de tokens y contraseñas de los canales (Fernet).
+    "cryptography>=43,<48",
 ]
 
 [project.optional-dependencies]

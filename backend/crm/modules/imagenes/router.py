@@ -36,11 +36,14 @@ def disponibles() -> dict:
     try:
         mtime = ruta.stat().st_mtime
     except OSError:
-        return {"version": 0, "ids": []}
+        return {"version": 0, "ids": [], "versiones": {}}
     with _lock:
         if _cache["mtime"] != mtime:
             man = leer_manifiesto(base())
-            _cache["datos"] = {"version": man.get("version", 0), "ids": sorted(man.get("productos", {}))}
+            prods = man.get("productos", {})
+            _cache["datos"] = {"version": man.get("version", 0), "ids": sorted(prods),
+                               # fotos cambiadas a mano: su propia versión, para que el navegador no muestre la anterior
+                               "versiones": {p: i["v"] for p, i in prods.items() if i.get("v")}}
             _cache["mtime"] = mtime
         return _cache["datos"]
 
@@ -92,3 +95,68 @@ def banner(nombre: str):
         raise HTTPException(404, "No encontrado.")
     # El id es aleatorio y el archivo nunca cambia: se puede guardar en caché un año.
     return FileResponse(archivo, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+# ------------------------------------------------------------------------------------------ fotos una a una
+from ...security import require_admin  # noqa: E402
+from . import fotos as ft  # noqa: E402
+
+
+def _quien(request: Request) -> str:
+    nombre = re.sub(r"[^\w .@-]", "", request.headers.get("x-crm-usuario", ""), flags=re.UNICODE).strip()[:30]
+    return nombre or "administrador"
+
+
+def _wh():
+    from ...warehouse import get_warehouse
+    return get_warehouse()
+
+
+def _producto(pid: str) -> None:
+    if not _ID.match(pid) or not _wh().scalar("SELECT COUNT(*) FROM producto WHERE producto_id = ?", [pid]):
+        raise HTTPException(404, "Producto no encontrado en el catálogo.")
+
+
+@router.get("/api/configuracion/fotos", dependencies=[Depends(require_api_key)])
+def listar_fotos(filtro: str = Query("sin_foto", pattern="^(sin_foto|sin_verificar|verificadas|todas)$"),
+                 q: str = Query("", max_length=80), pagina: int = Query(1, ge=1, le=10_000)):
+    return ft.listar(_wh(), base(), filtro, q, pagina)
+
+
+@router.post("/api/configuracion/fotos/{pid}", dependencies=[Depends(require_admin)])
+async def subir_foto(pid: str, request: Request):
+    _producto(pid)
+    datos = bytearray()
+    async for parte in request.stream():
+        datos += parte
+        if len(datos) > ft.MAX_BYTES:
+            raise HTTPException(413, "La foto debe pesar menos de 8 MB.")
+    try:
+        info = await asyncio.to_thread(ft.subir, base(), pid, bytes(datos), _quien(request))
+    except ft.FotoInvalida as e:
+        raise HTTPException(422, str(e)) from None
+    _auditar(f"foto subida · producto {pid}", request)
+    return info
+
+
+@router.delete("/api/configuracion/fotos/{pid}", dependencies=[Depends(require_admin)], status_code=204)
+def borrar_foto(pid: str, request: Request):
+    _producto(pid)
+    if ft.borrar(base(), pid):
+        _auditar(f"foto quitada · producto {pid}", request)
+
+
+@router.post("/api/configuracion/fotos/{pid}/verificar", dependencies=[Depends(require_admin)])
+def verificar_foto(pid: str, request: Request, ok: bool = True):
+    _producto(pid)
+    try:
+        info = ft.verificar(base(), pid, _quien(request), ok)
+    except ft.FotoInvalida as e:
+        raise HTTPException(404, str(e)) from None
+    _auditar(f"foto {'verificada' if ok else 'marcada sin verificar'} · producto {pid}", request)
+    return info
+
+
+def _auditar(detalle: str, request: Request) -> None:
+    from ...store import get_store
+    get_store().auditar("fotos", None, detalle, f"{_quien(request)}@{request.client.host if request.client else '?'}")

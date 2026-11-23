@@ -258,7 +258,8 @@ class AutoAlmacen:
 
     def resumen_envios(self, aid: str | None = None, dias: int = 30, hoy: date | None = None) -> dict:
         """Envíos de los últimos ``dias`` (de una automatización o de todas): totales, personas, costo y serie diaria."""
-        from ..campanas.segmentos import COSTOS_DEFECTO as C
+        from ..campanas.segmentos import costos_vigentes
+        C = costos_vigentes()
 
         desde = ((hoy or date.today()) - timedelta(days=dias - 1)).isoformat()
         filtro, params = ("AND automatizacion_id = ?", [aid]) if aid else ("", [])
@@ -282,7 +283,8 @@ class AutoAlmacen:
 
     def por_automatizacion(self, desde: str | None, hasta: str | None) -> list[dict]:
         """Envíos, personas y costo de cada automatización (no eliminada) entre dos fechas (para la Analítica)."""
-        from ..campanas.segmentos import COSTOS_DEFECTO as C
+        from ..campanas.segmentos import costos_vigentes
+        C = costos_vigentes()
 
         d, h = desde or "0000-01-01", hasta or "9999-12-31"
         costo = ("(CASE WHEN e.canales LIKE '%whatsapp%' THEN ? WHEN e.canales LIKE '%sms%' THEN ? ELSE 0 END"

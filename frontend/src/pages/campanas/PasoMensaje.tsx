@@ -3,7 +3,8 @@ import { Check, ImagePlus, Mail, MessageCircle, MessageSquareText, PenLine, PenS
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Badge, Btn, Card, ErrorBox, Notice } from '@/components/ui'
 import VistaCanales from '@/components/VistaCanales'
-import { api, subirBanner, urlBanner, type Mensaje, type Producto, type Textos } from '@/lib/api'
+import { Link } from 'react-router-dom'
+import { api, subirBanner, urlBanner, useCanalesDisponibles, type Mensaje, type Producto, type Textos } from '@/lib/api'
 import { fmtNum } from '@/lib/format'
 
 interface Props {
@@ -84,6 +85,10 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId,
   const [err, setErr] = useState<unknown>(null)
   const [val, setVal] = useState<Validacion>({})
   const [canal, setCanal] = useState<Canal>('whatsapp')
+  const disp = useCanalesDisponibles()
+  // Un canal sin configurar (o desactivado) en Configuración se ve opaco y no se puede elegir. Mientras carga, se permite.
+  const habilitado = (c: Canal) => !disp.data || disp.data.canales[c]
+  const sinConfigurar = mensaje.canales.filter((c) => !habilitado(c as Canal))
   const set = (p: Partial<Mensaje>) => onChange({ ...mensaje, ...p })
   const setTexto = (c: Canal, patch: Record<string, string>) =>
     set({ textos: { ...mensaje.textos, [c]: { ...(mensaje.textos[c] ?? {}), ...patch } } as Textos })
@@ -151,21 +156,32 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId,
               <div className="grid gap-2.5 sm:grid-cols-3">
                 {CANALES.map((c) => {
                   const on = mensaje.canales.includes(c.id)
+                  const ok = habilitado(c.id)
                   return (
-                    <label key={c.id} className={clsx('relative flex cursor-pointer flex-col gap-2 rounded-2xl border p-3.5 transition focus-within:ring-2 focus-within:ring-brand/30',
-                      on ? 'border-brand bg-brand-soft/50' : 'border-line hover:border-line-strong hover:bg-surface-hover')}>
-                      <input type="checkbox" className="sr-only" checked={on}
+                    <label key={c.id} title={ok ? undefined : 'Este canal no está configurado o está desactivado en Configuración.'}
+                      className={clsx('relative flex flex-col gap-2 rounded-2xl border p-3.5 transition focus-within:ring-2 focus-within:ring-brand/30',
+                      !ok ? 'cursor-not-allowed border-line opacity-45 grayscale' : on ? 'cursor-pointer border-brand bg-brand-soft/50' : 'cursor-pointer border-line hover:border-line-strong hover:bg-surface-hover')}>
+                      <input type="checkbox" className="sr-only" checked={on && ok} disabled={!ok}
                         onChange={(e) => set({ canales: e.target.checked ? [...mensaje.canales, c.id] : mensaje.canales.filter((x) => x !== c.id) })} />
                       <span className="flex items-center justify-between">
                         <span className={clsx('grid h-9 w-9 place-items-center rounded-xl', c.tile)}><c.icon size={18} /></span>
                         <span className={clsx('grid h-5 w-5 place-items-center rounded-full border', on ? 'border-brand bg-brand text-white' : 'border-line-strong')}>{on && <Check size={12} strokeWidth={3.5} />}</span>
                       </span>
-                      <span><span className="block text-[13.5px] font-bold text-ink">{c.label}</span><span className="block text-[11.5px] leading-snug text-ink-3">{c.hint}</span></span>
+                      <span><span className="block text-[13.5px] font-bold text-ink">{c.label}</span><span className="block text-[11.5px] leading-snug text-ink-3">{ok ? c.hint : (disp.data?.motivos?.[c.id] ?? 'Sin configurar en Configuración')}</span></span>
                     </label>
                   )
                 })}
               </div>
               {mensaje.canales.length === 0 && <div className="mt-3"><Notice tone="bad">Elige al menos un canal.</Notice></div>}
+              {sinConfigurar.length > 0 && (
+                <div className="mt-3"><Notice tone="warn">
+                  {sinConfigurar.map((c) => CANALES.find((x) => x.id === c)?.label).join(', ')} {sinConfigurar.length === 1 ? 'está elegido pero no está' : 'están elegidos pero no están'} configurado(s): no se podrá publicar por ahí.{' '}
+                  <button type="button" className="font-semibold underline" onClick={() => set({ canales: mensaje.canales.filter((c) => habilitado(c as Canal)) })}>Quitarlos</button>
+                </Notice></div>
+              )}
+              {disp.data && !Object.values(disp.data.canales).some(Boolean) && (
+                <div className="mt-3"><Notice tone="info">Ningún canal está listo todavía. Un administrador debe configurarlos en <Link to="/configuracion" className="font-semibold underline">Configuración</Link>.</Notice></div>
+              )}
             </div>
           </div>
         </Card>

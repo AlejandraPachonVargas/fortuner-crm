@@ -27,6 +27,7 @@ function WizardRuta() {
 // La analítica (ECharts) se carga aparte, solo al abrirla: el resto del CRM no carga ese peso.
 const AnaliticaClientes = lazy(() => import('./pages/analitica/Clientes'))
 const AnaliticaCampanas = lazy(() => import('./pages/analitica/Campanas'))
+const Configuracion = lazy(() => import('./pages/configuracion/Pagina'))
 const cargando = <div className="mx-auto max-w-[1400px] space-y-3"><Skeleton h={60} /><Skeleton h={420} /></div>
 
 /** Un fallo de una gráfica (o de descargar el paquete tras una actualización) queda en esa pantalla: el menú sigue vivo. */
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/analitica" element={<Navigate to="/analitica/clientes" replace />} />
           <Route path="/analitica/clientes" element={<Aislada><AnaliticaClientes /></Aislada>} />
           <Route path="/analitica/campanas" element={<Aislada><AnaliticaCampanas /></Aislada>} />
+          <Route path="/configuracion" element={<Aislada><Configuracion /></Aislada>} />
           <Route path="*" element={<Navigate to="/campanas" replace />} />
         </Routes>
       </AppShell></RolProvider>

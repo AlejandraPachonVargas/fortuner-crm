@@ -2,6 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     { "name": "crm-api", "runtimeExecutable": ".venv/Scripts/python.exe", "runtimeArgs": ["-m", "uvicorn", "crm.api:app", "--app-dir", "backend", "--port", "8900", "--reload", "--reload-dir", "backend/crm"], "port": 8900 },
+    { "name": "crm-8901", "runtimeExecutable": ".venv/Scripts/crm.exe", "runtimeArgs": ["servir"], "port": 8901 },
     { "name": "crm-web", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "frontend", "run", "dev"], "port": 5174 }
   ]
 }

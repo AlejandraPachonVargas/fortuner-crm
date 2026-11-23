@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, Rocket, Save
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Btn, ConfirmDialog, ErrorBox, Notice, Skeleton } from '@/components/ui'
-import { api, useGet, type Campana, type Mensaje, type Preview, type Producto } from '@/lib/api'
+import { api, useCanalesDisponibles, useConfigGeneral, useGet, type Campana, type CanalId, type Mensaje, type Preview, type Producto } from '@/lib/api'
 import { fmtCop, fmtNum } from '@/lib/format'
 import { aLocalISO, errorFecha, fmtProgramada } from '@/lib/programacion'
 import PasoMensaje from './PasoMensaje'
@@ -46,6 +46,22 @@ export default function Wizard() {
   const [programa, setPrograma] = useState<Programa>(PROGRAMA_INICIAL)
   const [hecho, setHecho] = useState<{ destinatarios: number; costo: number; por_canal: Record<string, number>; programada: boolean; cuando: string | null; control: number; avisos: string[]; vigencia: string | null } | null>(null)
   const cargado = useRef(false)
+  const disp = useCanalesDisponibles()
+  const reglas = useConfigGeneral().data?.valores.reglas
+
+  // Campaña nueva: arranca con las reglas de Configuración (días sin contactar y grupo de control por defecto).
+  useEffect(() => {
+    if (idParam || sucio || !reglas) return
+    setFiltros((f) => ({ ...f, excluir_contactados_dias: f.excluir_contactados_dias ?? String(reglas.excluir_contactados_dias || '') }))
+    setPrograma((p) => ({ ...p, control: reglas.control_pct }))
+  }, [reglas]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Campaña nueva: arranca solo con los canales listos en Configuración (los demás se ven opacos en el paso Mensaje).
+  useEffect(() => {
+    if (idParam || sucio || !disp.data) return
+    const ok = disp.data.canales
+    setMensaje((m) => ({ ...m, canales: m.canales.filter((c) => ok[c as CanalId]) }))
+  }, [disp.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Carga inicial de un borrador existente.
   useEffect(() => {
@@ -184,7 +200,7 @@ export default function Wizard() {
       {paso === 4 && (
         <div className="space-y-4">
           <ResumenCampana d={{ nombre, objetivo, productos, mensaje, filtros, audiencia: preview?.resumen.audiencia ?? 0, costo: preview?.resumen.costo_estimado ?? 0, preview, vigencia: vig?.texto }} />
-          <PanelPublicacion valor={programa} onChange={setPrograma} canales={mensaje.canales} momento={preview?.resumen.momento} audiencia={preview?.resumen.audiencia ?? 0} />
+          <PanelPublicacion valor={programa} onChange={setPrograma} canales={mensaje.canales} momento={preview?.resumen.momento} audiencia={preview?.resumen.audiencia ?? 0} maxVigencia={reglas?.vigencia_max_dias} />
           {!preview && <Notice tone="info">Para ver el costo y los destinatarios exactos, pase por el paso <b>Audiencia</b>.</Notice>}
           {faltantes.length > 0 && <Notice tone="warn"><b>Antes de publicar:</b><ul className="mt-1 list-disc pl-5">{faltantes.map((f) => <li key={f}>{f}</li>)}</ul></Notice>}
         </div>

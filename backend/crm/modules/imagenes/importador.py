@@ -130,7 +130,7 @@ def _guardar(im: Image.Image, lado: int, calidad: int, destino: Path) -> None:
     os.replace(tmp, destino)   # atómico: nunca queda una imagen a medio escribir
 
 
-def convertir(origen: str, grande: Path, mini: Path) -> None:
+def convertir(origen, grande: Path, mini: Path) -> None:
     with Image.open(origen) as im:
         im.load()
         im = ImageOps.exif_transpose(im)
@@ -170,6 +170,10 @@ def importar(origen: Path, base: Path, productos: list[tuple[str, str | None]], 
     for pid, a in elegidos.items():
         firma = {"origen": a["ruta"], "bytes": a["bytes"], "mtime": a["mtime"]}
         prev = previos.get(pid)
+        if prev and prev.get("metodo") == "manual" and (grande_dir / f"{pid}.webp").is_file():
+            res.sin_cambios += 1          # foto subida a mano en Configuración: la importación nunca la reemplaza
+            nuevo[pid] = prev
+            continue
         listo = (grande_dir / f"{pid}.webp").is_file() and (mini_dir / f"{pid}.webp").is_file()
         if prev and listo and all(prev.get(k) == v for k, v in firma.items()):
             res.sin_cambios += 1

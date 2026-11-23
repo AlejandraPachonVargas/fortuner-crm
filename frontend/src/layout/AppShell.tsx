@@ -1,11 +1,11 @@
 import clsx from 'clsx'
 import {
-  BarChart3, ChevronDown, Gift, History, Megaphone, Moon, MoreHorizontal, PieChart, PlusCircle, Settings, ShieldCheck, Sun, TrendingUp,
+  BarChart3, ChevronDown, Gift, History, Megaphone, Moon, PieChart, PlusCircle, Settings, ShieldCheck, Sun, TrendingUp,
   UserPlus, Users, Workflow, type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
-import { useGet, type Estado } from '@/lib/api'
+import { Link, NavLink, useLocation } from 'react-router-dom'
+import { useCanalesDisponibles, useConsumo, useGet, type Estado } from '@/lib/api'
 import { fmtFecha } from '@/lib/format'
 
 // Cabecera Fortuner 27 (GUIA_REDISENO_MODULOS.md §7.1 y §7.2): logo y navegación arriba, sin barra lateral.
@@ -36,9 +36,6 @@ const GRUPOS: Grupo[] = [
     { id: 'an-campanas', label: 'Analítica de campañas', to: '/analitica/campanas', icon: TrendingUp, end: true },
   ] },
 ]
-const MAS: Grupo = { id: 'mas', label: 'Más', icon: MoreHorizontal, opciones: [
-  { id: 'config', label: 'Configuración', to: '', icon: Settings, proximamente: true },
-] }
 
 function useTheme() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -71,6 +68,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [theme, toggle] = useTheme()
   const loc = useLocation()
   const { data: sys } = useGet<Estado>('/sistema/estado', { stale: 30_000 })
+  const { data: consumo } = useConsumo()
+  const { data: disp } = useCanalesDisponibles()
+  const alertas = consumo ? (Object.entries(consumo.canales) as [string, { pct: number | null; alerta: boolean; agotado: boolean }][]).filter(([, c]) => c.alerta) : []
   const dias = sys?.warehouse ? Math.floor((Date.now() - new Date(sys.warehouse.fecha_max + 'T00:00:00').getTime()) / 864e5) : null
   const [abierto, setAbierto] = useState<{ id: string; left: number } | null>(null)
   const headerRef = useRef<HTMLElement>(null)
@@ -100,11 +100,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
     const h = headerRef.current!.getBoundingClientRect(), b = boton.getBoundingClientRect()
     setAbierto({ id, left: b.left - h.left })
   }
-  const grupoAbierto = [...GRUPOS, MAS].find((g) => g.id === abierto?.id)
+  const grupoAbierto = GRUPOS.find((g) => g.id === abierto?.id)
   const seccion = GRUPOS.find((g) => g.prefijo && loc.pathname.startsWith(g.prefijo))
 
   const Pestana = ({ g }: { g: Grupo }) => {
-    const activo = !!opcionActual(g, loc.pathname) && g.id !== 'mas'
+    const activo = !!opcionActual(g, loc.pathname)
     const Icon = g.icon
     return (
       <button type="button" aria-haspopup="menu" aria-expanded={abierto?.id === g.id} onClick={(e) => abrir(g.id, e.currentTarget)}
@@ -144,6 +144,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <span className="hidden md:inline-flex"><Chip punto={(dias ?? 0) > 2 ? 'warn' : 'mint'}
                   title={`Datos del ERP desde ${fmtFecha(sys.warehouse.fecha_min)} · ${sys.warehouse.clientes_con_compras.toLocaleString('es-CO')} clientes con compras`}>Ventas al {fmtFecha(sys.warehouse.fecha_max)}</Chip></span>
               )}
+              {disp?.desarrollo && <Link to="/configuracion?s=canales" className="inline-flex"><Chip punto="warn" title="Canales habilitados aunque no estén configurados (Configuración › Canales)">Modo desarrollo</Chip></Link>}
+              {alertas.length > 0 && <Link to="/configuracion?s=presupuesto" className="inline-flex"><Chip punto={alertas.some(([, c]) => c.agotado) ? 'bad' : 'warn'} title="Configuración › Presupuesto">
+                Presupuesto {alertas.map(([k, c]) => `${k === 'email' ? 'correo' : k === 'sms' ? 'SMS' : 'WhatsApp'} ${Math.round(c.pct ?? 0)} %`).join(' · ')}</Chip></Link>}
               {sys && !sys.ia && <span className="hidden md:inline-flex"><Chip punto="warn" title="Falta la API key de DeepSeek en el servidor">IA sin configurar</Chip></span>}
               <button type="button" title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'} aria-label="Cambiar tema" onClick={toggle}
                 className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] text-white/75 transition-colors hover:bg-white/10 hover:text-white">
@@ -157,7 +160,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto px-2 [scrollbar-width:none] sm:px-0">
               {GRUPOS.map((g) => <Pestana key={g.id} g={g} />)}
             </div>
-            <div className="shrink-0 pr-2 sm:pr-0"><Pestana g={MAS} /></div>
+            {/* Configuración: botón directo (sin menú desplegable) en la esquina derecha de la barra */}
+            <div className="shrink-0 pr-2 sm:pr-0">
+              <NavLink to="/configuracion" onClick={() => setAbierto(null)}
+                className={({ isActive }) => clsx('relative flex shrink-0 items-center gap-2 px-3 py-3 text-[13px] whitespace-nowrap transition-colors sm:px-4 sm:py-3.5 sm:text-[13.5px]',
+                  isActive ? 'font-semibold text-white' : 'font-medium text-white/70 hover:bg-white/5 hover:text-white')}>
+                {({ isActive }) => (<>
+                  <Settings size={17} strokeWidth={isActive ? 2.3 : 1.9} className={isActive ? 'text-[#21CC93]' : ''} />
+                  Configuración
+                  {isActive && <span className="absolute inset-x-3 bottom-0 h-[3px] rounded-t bg-gradient-to-r from-[#21CC93] to-[#33B1FF]" />}
+                </>)}
+              </NavLink>
+            </div>
           </nav>
         </div>
 

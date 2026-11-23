@@ -21,7 +21,7 @@ import pyarrow as pa
 
 from ...store import get_store
 from ...warehouse import WarehouseNoDisponible, get_warehouse
-from ..campanas.segmentos import COSTOS_DEFECTO, OBJETIVOS, SEGMENTOS_RFM
+from ..campanas.segmentos import COSTOS_DEFECTO, OBJETIVOS, SEGMENTOS_RFM, costos_vigentes
 from .comun import en_cache, entero, iso, meta_warehouse, pct, r2
 
 log = logging.getLogger("crm.analitica.campanas")
@@ -191,7 +191,7 @@ def _calcular(f: dict, meta: dict) -> dict:
     }
     return {
         "filtros": f, "corte": iso(corte), "aviso": aviso, "kpis": kpis, "por_mes": por_mes,
-        "canales": [{"id": k, "n": canales.get(k, 0), "costo_unitario": COSTOS_DEFECTO[k]} for k in COSTOS_DEFECTO],
+        "canales": [{"id": k, "n": canales.get(k, 0), "costo_unitario": costos_vigentes()[k]} for k in COSTOS_DEFECTO],
         "canales_campana": [{"id": k, "n": canales_campana.get(k, 0)} for k in COSTOS_DEFECTO],
         "productos": [{"nombre": k, "n": v} for k, v in productos.most_common(12)],
         "categorias": [{"nombre": k, "n": v} for k, v in grupos_prod.most_common(10)],

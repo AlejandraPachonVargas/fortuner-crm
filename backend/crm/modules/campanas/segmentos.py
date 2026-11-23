@@ -53,8 +53,17 @@ OBJETIVOS = {
 EXCLUIR_COMPRADORES = {"no": "No excluir", "habituales": "Compradores habituales", "todos": "Todos los que ya los compraron"}
 HABITUAL_COMPRAS = (2, 3, 4, 6)     # «habitual» = al menos N compras (facturas distintas) con estos productos…
 HABITUAL_DIAS = (90, 180, 365)      # …en los últimos D días antes del corte de datos
-COSTOS_DEFECTO = {"whatsapp": 120.0, "sms": 45.0, "email": 3.0}   # COP por mensaje: SUPUESTO editable, validar con el proveedor
+COSTOS_DEFECTO = {"whatsapp": 120.0, "sms": 45.0, "email": 3.0}   # COP por mensaje si Configuración no dice otra cosa
 CANALES = tuple(COSTOS_DEFECTO)
+
+
+def costos_vigentes() -> dict[str, float]:
+    """Costo por mensaje de cada canal: el de Configuración o, si no se ha definido, el de defecto."""
+    try:
+        from ..configuracion.servicio import costos_por_mensaje
+        return costos_por_mensaje()
+    except Exception:
+        return dict(COSTOS_DEFECTO)
 
 # Pesos del puntaje por objetivo: afinidad, momento (ciclo), valor, recencia, estacionalidad, descuento.
 _PESOS = {
@@ -124,12 +133,20 @@ def _validos(v, permitidos) -> list[str]:
     return [str(x) for x in _lista(v) if str(x) in permitidos]
 
 
-def _uno_de(v, permitidos: tuple[int, ...], defecto: int) -> int:
+def _entre(v, lo: int, hi: int, defecto: int) -> int:
     try:
         n = int(v)
     except (TypeError, ValueError):
         return defecto
-    return n if n in permitidos else defecto
+    return n if lo <= n <= hi else defecto
+
+
+def _regla(clave: str, defecto: int) -> int:
+    try:
+        from ..configuracion.general import valor
+        return int(valor("reglas", clave))
+    except Exception:
+        return defecto
 
 
 def normalizar(f: dict) -> dict:
@@ -142,7 +159,7 @@ def normalizar(f: dict) -> dict:
     obj = f.get("objetivo")
     objetivo = obj if isinstance(obj, str) and obj in OBJETIVOS else "equilibrado"
     ciudades = [str(c)[:60] for c in _lista(f.get("ciudades"))][:50]
-    costos = dict(COSTOS_DEFECTO)
+    costos = costos_vigentes()
     for k, v in (f.get("costos") if isinstance(f.get("costos"), dict) else {}).items():
         if k in costos:
             try:
@@ -178,8 +195,8 @@ def normalizar(f: dict) -> dict:
         "excluir_contactados_dias": max(0, min(int(f.get("excluir_contactados_dias") or 0), 365)) if str(f.get("excluir_contactados_dias") or "0").isdigit() else 0,
         "objetivo": objetivo,
         "excluir_compradores": f.get("excluir_compradores") if f.get("excluir_compradores") in EXCLUIR_COMPRADORES else "no",
-        "habitual_compras": _uno_de(f.get("habitual_compras"), HABITUAL_COMPRAS, 3),
-        "habitual_dias": _uno_de(f.get("habitual_dias"), HABITUAL_DIAS, 180),
+        "habitual_compras": _entre(f.get("habitual_compras"), 2, 20, _regla("habitual_compras", 3)),
+        "habitual_dias": _entre(f.get("habitual_dias"), 30, 730, _regla("habitual_dias", 180)),
         "tope_contactos": tope,
         "costos": costos,
     }

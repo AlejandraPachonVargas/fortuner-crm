@@ -125,8 +125,17 @@ def _fmt_cop(v: float) -> str:
     return "$" + f"{v:,.0f}".replace(",", ".")
 
 
-FACTOR_DESCUENTO = 0.6   # se puede ceder hasta el 60 % del margen (se conserva al menos el 40 %)
-TOPE_DESCUENTO = 0.30    # nunca más del 30 %: descuentos mayores devalúan el producto ante el cliente
+FACTOR_DESCUENTO = 0.6   # por defecto: se puede ceder hasta el 60 % del margen (se conserva al menos el 40 %)
+TOPE_DESCUENTO = 0.30    # por defecto: nunca más del 30 %. Ambos se cambian en Configuración › Reglas de campañas.
+
+
+def parametros_descuento() -> tuple[float, float]:
+    try:
+        from ..configuracion.general import get_general
+        r = get_general().seccion("reglas")
+        return float(r["descuento_factor_pct"]) / 100, float(r["descuento_tope_pct"]) / 100
+    except Exception:
+        return FACTOR_DESCUENTO, TOPE_DESCUENTO
 
 
 def calculo_descuento(precio: float | None, costo: float | None) -> dict:
@@ -138,13 +147,14 @@ def calculo_descuento(precio: float | None, costo: float | None) -> dict:
     """
     precio, costo = float(precio or 0), float(costo or 0)
     margen = (precio - costo) / precio if precio > 0 else 0.0
-    posible = max(0.0, margen * FACTOR_DESCUENTO)
-    desc = round(min(TOPE_DESCUENTO, posible) * 100)
+    factor, tope = parametros_descuento()
+    posible = max(0.0, margen * factor)
+    desc = round(min(tope, posible) * 100)
     con_desc = precio * (1 - desc / 100)
     return {
         "precio": round(precio), "costo": round(costo), "margen_pct": round(margen * 100, 2),
-        "factor_pct": round(FACTOR_DESCUENTO * 100), "tope_pct": round(TOPE_DESCUENTO * 100),
-        "posible_pct": round(posible * 100, 2), "descuento_pct": desc, "limitado_por_tope": posible > TOPE_DESCUENTO,
+        "factor_pct": round(factor * 100), "tope_pct": round(tope * 100),
+        "posible_pct": round(posible * 100, 2), "descuento_pct": desc, "limitado_por_tope": posible > tope,
         "precio_con_descuento": round(con_desc), "ganancia_antes": round(precio - costo), "ganancia_despues": round(con_desc - costo),
         "margen_despues_pct": round((con_desc - costo) / con_desc * 100, 2) if con_desc > 0 else 0.0,
     }
@@ -187,8 +197,8 @@ def recomendar_inventario(wh: Warehouse, limite: int = 20, f: dict | None = None
         r.update(causa=causa, razon=razon, margen_pct=round(margen * 100, 1), descuento_sugerido=desc, descuento_calculo=calc, fuente="datos")
         items.append(r)
     return {"fuente": "datos", "items": items,
-            "nota": f"Descuento sugerido = {FACTOR_DESCUENTO * 100:.0f} % del margen sobre el último costo, con tope de "
-                    f"{TOPE_DESCUENTO * 100:.0f} %: así se conserva al menos el {(1 - FACTOR_DESCUENTO) * 100:.0f} % del margen. Es referencial: valídelo con compras."}
+            "nota": (lambda fa, to: f"Descuento sugerido = {fa * 100:.0f} % del margen sobre el último costo, con tope de "
+                    f"{to * 100:.0f} %: así se conserva al menos el {(1 - fa) * 100:.0f} % del margen. Es referencial: valídelo con compras.")(*parametros_descuento())}
 
 
 # ---------------------------------------------------------------------------- recomendación por temporada

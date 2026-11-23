@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # --- Seguridad --------------------------------------------------------------
     api_key: str = Field("", alias="CRM_API_KEY")
     admin_key: str = Field("", alias="CRM_ADMIN_KEY")
+    # Clave Fernet para cifrar las credenciales de los canales (Configuración). Vacía = data/clave_cifrado.key.
+    cifrado_clave: str = Field("", alias="CRM_CIFRADO_CLAVE")
     ia_rate_limit: int = Field(30, alias="CRM_IA_RATE_LIMIT")
 
     # --- Contexto comercial -----------------------------------------------------

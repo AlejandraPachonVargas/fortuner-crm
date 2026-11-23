@@ -223,7 +223,9 @@ def restricciones_contacto() -> RestriccionesContacto:
                bool_or(autoriza_sms IS FALSE)                                 AS no_sms,
                bool_or(autoriza_email IS FALSE)                               AS no_email,
                -- menor si ALGUNA ficha dice que no ha cumplido 18 (edad exacta, contada al día de hoy)
-               bool_or(nac IS NOT NULL AND nac > current_date - INTERVAL 18 YEAR)  AS menor
+               bool_or(nac IS NOT NULL AND nac > current_date - INTERVAL 18 YEAR)  AS menor,
+               list(DISTINCT celular) FILTER (WHERE celular <> '')                 AS celulares,
+               list(DISTINCT email) FILTER (WHERE email <> '')                     AS correos
         FROM cli WHERE documento <> '' GROUP BY documento""")
     conocidos, excluir, sin_aut, menores, canales = set(), set(), set(), set(), {}
     for r in filas:
@@ -238,4 +240,9 @@ def restricciones_contacto() -> RestriccionesContacto:
         ch = frozenset(c for c, k in (("whatsapp", "no_whatsapp"), ("sms", "no_sms"), ("email", "no_email")) if r[k])
         if ch:
             canales[d] = ch
+    # Bajas de suscripción y Registro de Números Excluidos (Configuración › Legal): se suman a lo que dice el ERP.
+    from ..configuracion.legal import exclusiones
+    for d, ch in exclusiones([{"documento": r["documento"], "celulares": r["celulares"], "correos": r["correos"],
+                               "autoriza": r["autoriza"]} for r in filas]).items():
+        canales[d] = canales.get(d, frozenset()) | ch
     return RestriccionesContacto(frozenset(conocidos), frozenset(excluir), frozenset(sin_aut), frozenset(menores), canales)

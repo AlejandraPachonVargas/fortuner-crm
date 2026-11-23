@@ -241,7 +241,9 @@ async def redactar(b: Redactar):
         raise HTTPException(404, "No se encontraron los productos seleccionados.")
     hoy = _hoy()
     t = calendario.buscar(b.temporada_id, hoy) if b.temporada_id else None
-    return await redaccion.generar(LLMClient(), productos, b.prompt, b.canales, tono=b.tono, temporada=t.nombre if t else "")
+    from ..configuracion.general import empresa_nombre
+    return await redaccion.generar(LLMClient(), productos, b.prompt, b.canales, tono=b.tono, temporada=t.nombre if t else "",
+                                   empresa=empresa_nombre())
 
 
 @router.post("/redaccion/validar")
@@ -254,7 +256,7 @@ async def validar_redaccion(b: ValidarTextos):
 @router.get("/segmentacion/opciones")
 async def opciones_segmentacion():
     return {"segmentos_rfm": seg.SEGMENTOS_RFM, "ciclo": seg.CICLOS, "edades": list(seg.BANDAS_EDAD),
-            "clubs": list(seg.CLUBS), "objetivos": seg.OBJETIVOS, "costos": seg.COSTOS_DEFECTO,
+            "clubs": list(seg.CLUBS), "objetivos": seg.OBJETIVOS, "costos": seg.costos_vigentes(),
             "excluir_compradores": seg.EXCLUIR_COMPRADORES, "habitual_compras": list(seg.HABITUAL_COMPRAS),
             "habitual_dias": list(seg.HABITUAL_DIAS),
             "canales": list(seg.CANALES)}
@@ -448,7 +450,7 @@ async def duplicar(cid: str, request: Request):
 class PublicarIn(BaseModel):
     programar_para: str | None = Field(None, max_length=40, description="Fecha y hora local ISO (2026-11-14T16:30). Vacío = ahora.")
     control_pct: int = Field(0, ge=0, le=20, description="% de la audiencia que se reserva sin enviar para medir el efecto.")
-    vigencia_dias: int | None = Field(None, ge=1, le=programacion.MAX_VIGENCIA_DIAS,
+    vigencia_dias: int | None = Field(None, ge=1, le=365,
                                       description="Días de validez de la oferta desde el lanzamiento (el último incluido).")
 
 
@@ -472,7 +474,10 @@ async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
             raise HTTPException(422, str(e)) from None
     if not b.vigencia_dias:
         raise HTTPException(422, "Indique la vigencia de la campaña (cuántos días es válida la oferta).")
-    vig = programacion.vigencia((cuando or datetime.now()).date(), b.vigencia_dias)
+    try:
+        vig = programacion.vigencia((cuando or datetime.now()).date(), b.vigencia_dias)
+    except programacion.FechaInvalida as e:
+        raise HTTPException(422, str(e)) from None
     msg = c["mensaje"] or {}
     textos = msg.get("textos") or {}
     canales = [k for k in (msg.get("canales") or []) if k in seg.CANALES]
@@ -481,6 +486,13 @@ async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
     if not canales or not any(
             (textos.get(k) or {}).get("texto" if k != "email" else "cuerpo") for k in canales):
         raise HTTPException(422, "Redacte el mensaje de al menos un canal seleccionado.")
+    from ..configuracion.catalogo import NOMBRE_CANAL
+    from ..configuracion.servicio import canales_disponibles
+    sin_config = [k for k in canales if k not in canales_disponibles()]
+    if sin_config:
+        raise HTTPException(422, "Estos canales no están configurados o están desactivados: "
+                                 + ", ".join(NOMBRE_CANAL[k] for k in sin_config)
+                                 + ". Complételos en Configuración o quítelos del mensaje.")
     filtros = filtros_de_campana(c, canales)
     productos, restringidos, excluidos = _contexto_segmentacion(filtros, filtros["productos"])
     f, cols, rows, _ = calcular_audiencia(filtros, restringidos, excluidos)
@@ -495,6 +507,23 @@ async def publicar(cid: str, request: Request, b: PublicarIn | None = None):
     # El costo se calcula sobre quienes sí recibirán el mensaje (el grupo de control no se cobra).
     costo = round(r["costo_estimado"] * n_envio / len(dest))
     por_canal = {k: round(v * n_envio / len(dest)) for k, v in r["por_canal"].items()}
+    # Tope mensual de presupuesto por canal (Configuración › Presupuesto): no se publica si lo supera.
+    from ..configuracion.presupuesto import costo_por_canal, excede
+    destinos = {k: 0 for k in seg.CANALES}
+    for cl, chs in dest:
+        if cl in control:
+            continue
+        cs = set(chs.split(","))
+        if "whatsapp" in cs:
+            destinos["whatsapp"] += 1
+        elif "sms" in cs:
+            destinos["sms"] += 1
+        if "email" in cs:
+            destinos["email"] += 1
+    sobre = excede(costo_por_canal(destinos))
+    if sobre:
+        raise HTTPException(422, "La campaña supera el tope mensual de presupuesto. " + "; ".join(sobre)
+                                 + ". Reduzca la audiencia o ajuste el tope en Configuración › Presupuesto.")
     origen = _origen(request)
     store.actualizar(cid, {"audiencia": n_envio, "costo_estimado": costo}, origen)
     if cuando:

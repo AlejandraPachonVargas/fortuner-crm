@@ -21,7 +21,8 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 
 from ...warehouse import WarehouseNoDisponible, get_warehouse
-from ..campanas.segmentos import COSTOS_DEFECTO, _canales_de, _mask_nombre, productos_restringidos
+from ..campanas.segmentos import _canales_de, _mask_nombre, costos_vigentes, productos_restringidos
+from ..configuracion.servicio import canales_disponibles
 from ..clientes.consultas import restricciones_contacto
 from ..clientes.indice import IndiceNoListo, get_indice
 from .almacen import AutoAlmacen, get_almacen
@@ -128,9 +129,10 @@ def restringida(ed: dict) -> bool:
     return bool(o.get("restringido")) or bool(productos_restringidos(piezas))
 
 
-def costo_de(canales: list[str]) -> float:
-    c = COSTOS_DEFECTO["whatsapp"] if "whatsapp" in canales else COSTOS_DEFECTO["sms"] if "sms" in canales else 0.0
-    return c + (COSTOS_DEFECTO["email"] if "email" in canales else 0.0)
+def costo_de(canales: list[str], costos: dict | None = None) -> float:
+    k = costos or costos_vigentes()
+    c = k["whatsapp"] if "whatsapp" in canales else k["sms"] if "sms" in canales else 0.0
+    return c + (k["email"] if "email" in canales else 0.0)
 
 
 # ------------------------------------------------------------------------------------------ evaluación
@@ -177,9 +179,10 @@ def evaluar(a: dict, ed: dict, fecha: date, dias: list[date], alm: AutoAlmacen) 
         fuera["tope_diario"] += len(elegibles) - tope
         elegibles = elegibles[:tope]
     por_canal = Counter(c for e in elegibles for c in e["canales"])
+    costos = costos_vigentes()
     return {"candidatos": len(orden), "elegibles": elegibles, "excluidos": {k: fuera.get(k, 0) for k in MOTIVOS if fuera.get(k)},
             "por_canal": {c: por_canal.get(c, 0) for c in ("whatsapp", "sms", "email")},
-            "costo": round(sum(costo_de(e["canales"]) for e in elegibles)), "excluye_menores": menores_fuera}
+            "costo": round(sum(costo_de(e["canales"], costos) for e in elegibles)), "excluye_menores": menores_fuera}
 
 
 def _resumen_edicion(ed: dict | None) -> dict | None:
@@ -209,6 +212,18 @@ def ejecutar(aid: str, *, fecha: date | None = None, origen: str = "manual", pro
             if not probar:
                 _registrar_una_vez(alm, aid, fecha, origen, "incompleta", ed["id"], res["aviso"], inicio)
             return res
+        # Solo por los canales configurados y activos en Configuración (falla cerrada: sin configuración, nada).
+        disp = canales_disponibles()
+        sin_config = [c for c in ed["canales"] if c not in disp]
+        if sin_config and len(sin_config) == len(ed["canales"]):
+            res = {**base, "estado": "sin_canal", "aviso": "Ningún canal de esta edición está configurado y activo en Configuración: "
+                                                            "no se envía nada hasta completarlo."}
+            if not probar:
+                _registrar_una_vez(alm, aid, fecha, origen, "sin_canal", ed["id"], res["aviso"], inicio)
+            return res
+        if sin_config:
+            ed = {**ed, "canales": [c for c in ed["canales"] if c in disp]}
+            base["aviso_canales"] = "Sin configurar (no se usan): " + ", ".join(sin_config)
         dias = [fecha] if probar else dias_ventana(a.get("ultima_ref"), fecha)
         ev = evaluar(a, ed, fecha, dias, alm)
         res = {**base, "estado": "ok", "dias": [d.isoformat() for d in dias], "candidatos": ev["candidatos"],

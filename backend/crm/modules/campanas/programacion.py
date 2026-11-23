@@ -26,7 +26,15 @@ class FechaInvalida(ValueError):
 
 
 # ------------------------------------------------------------------------------------------ vigencia de la oferta
-MAX_VIGENCIA_DIAS = 90
+MAX_VIGENCIA_DIAS = 90   # por defecto; se cambia en Configuración › Reglas de campañas
+
+
+def max_vigencia() -> int:
+    try:
+        from ..configuracion.general import valor
+        return int(valor("reglas", "vigencia_max_dias"))
+    except Exception:
+        return MAX_VIGENCIA_DIAS
 MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre",
          "diciembre")
 
@@ -34,8 +42,9 @@ MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto
 def vigencia(inicio: date, dias: int) -> tuple[date, date]:
     """Vigencia de la oferta: arranca el día de lanzamiento y cuenta ``dias`` días calendario, el último INCLUIDO
     (3 días desde el 22 → 22, 23 y 24)."""
-    if not 1 <= int(dias) <= MAX_VIGENCIA_DIAS:
-        raise FechaInvalida(f"La vigencia debe ser de 1 a {MAX_VIGENCIA_DIAS} días.")
+    tope = max_vigencia()
+    if not 1 <= int(dias) <= tope:
+        raise FechaInvalida(f"La vigencia debe ser de 1 a {tope} días.")
     return inicio, inicio + timedelta(days=int(dias) - 1)
 
 

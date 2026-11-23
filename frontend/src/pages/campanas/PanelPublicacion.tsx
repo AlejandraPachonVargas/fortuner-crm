@@ -25,10 +25,11 @@ export function diasHastaFinDeMes(inicio: string): number {
   return new Date(y, m, 0).getDate() - d + 1
 }
 
-interface Props { valor: Programa; onChange: (p: Programa) => void; canales: string[]; momento?: Momento; audiencia: number }
+interface Props { valor: Programa; onChange: (p: Programa) => void; canales: string[]; momento?: Momento; audiencia: number; maxVigencia?: number }
 
 /** Paso final: publicar ahora o programar día y hora (con sugerencia basada en cuándo compra la audiencia) + grupo de control. */
-export default function PanelPublicacion({ valor, onChange, canales, momento, audiencia }: Props) {
+export default function PanelPublicacion({ valor, onChange, canales, momento, audiencia, maxVigencia = MAX_VIGENCIA }: Props) {
+  const MAX_VIG = maxVigencia
   const set = (p: Partial<Programa>) => onChange({ ...valor, ...p })
   const hoy = fechaISO(new Date())
   const sug = useMemo(() => sugerirMomento(momento), [momento])
@@ -103,17 +104,17 @@ export default function PanelPublicacion({ valor, onChange, canales, momento, au
                 <button key={n} type="button" aria-pressed={!otro && valor.vigencia === n} onClick={() => elegirDias(n)}
                   className={clsx('h-9 min-w-9 rounded-lg border px-2.5 text-[12.5px] font-semibold transition', !otro && valor.vigencia === n ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-hover')}>{n}</button>
               ))}
-              {finMes != null && finMes <= MAX_VIGENCIA && (
+              {finMes != null && finMes <= MAX_VIG && (
                 <button type="button" onClick={() => elegirDias(finMes)} title={`${finMes} día(s): hasta el último día del mes`}
                   className="h-9 rounded-lg border border-line-strong px-2.5 text-[12.5px] font-semibold text-ink-2 transition hover:bg-surface-hover">Hasta fin de mes</button>
               )}
               <label className="flex items-center gap-1.5 text-[12px] text-ink-3">Otro
-                <input type="text" inputMode="numeric" maxLength={2} placeholder="—" aria-label={`Días de vigencia (otro valor, de 1 a ${MAX_VIGENCIA})`} value={otro}
+                <input type="text" inputMode="numeric" maxLength={3} placeholder="—" aria-label={`Días de vigencia (otro valor, de 1 a ${MAX_VIG})`} value={otro}
                   onChange={(e) => {
                     const t = e.target.value.replace(/\D/g, '').slice(0, 2)
                     setOtro(t)
                     const n = Number(t)
-                    set({ vigencia: t && n >= 1 && n <= MAX_VIGENCIA ? n : null })
+                    set({ vigencia: t && n >= 1 && n <= MAX_VIG ? n : null })
                   }}
                   className={clsx('h-9 w-14 rounded-lg border bg-surface px-2 text-center text-[13px] text-ink', otro ? 'border-brand ring-2 ring-[rgba(15,112,252,.15)]' : 'border-line-strong')} /></label>
               <span className="text-[12px] text-ink-3">días</span>
@@ -121,7 +122,7 @@ export default function PanelPublicacion({ valor, onChange, canales, momento, au
           </div>
           {vig ? <p className="mt-2 text-[13px] text-ink">Válida <b>{vig.texto}</b> ({valor.vigencia === 1 ? '1 día' : `${valor.vigencia} días`}, el último incluido).</p>
             : valor.vigencia && valor.modo === 'programar' ? <p className="mt-2 text-[12px] text-ink-3">Elija la fecha de lanzamiento para ver las fechas exactas.</p>
-            : otro ? <p className="mt-2 text-[12px] text-bad">La vigencia debe ser de 1 a {MAX_VIGENCIA} días.</p>
+            : otro ? <p className="mt-2 text-[12px] text-bad">La vigencia debe ser de 1 a {MAX_VIG} días.</p>
             : <p className="mt-2 text-[12px] text-warn">Obligatoria: elija cuántos días es válida la campaña.</p>}
         </div>
 
@@ -133,7 +134,7 @@ export default function PanelPublicacion({ valor, onChange, canales, momento, au
               <p className="text-[11.5px] leading-snug text-ink-3">Reserva al azar una parte de la audiencia <b>sin enviarle nada</b>. Después se compara cuánto compraron con quienes sí recibieron el mensaje: así se sabe cuánto vendió <i>de verdad</i> la campaña y no lo que igual habrían comprado.</p>
             </div>
             <select aria-label="Porcentaje del grupo de control" value={valor.control} onChange={(e) => set({ control: Number(e.target.value) })} className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-[13px]">
-              {[0, 5, 10, 15, 20].map((n) => <option key={n} value={n}>{n === 0 ? 'Sin grupo de control' : `${n} % de la audiencia`}</option>)}
+              {[...new Set([0, 5, 10, 15, 20, valor.control])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n === 0 ? 'Sin grupo de control' : `${n} % de la audiencia`}</option>)}
             </select>
           </div>
           {valor.control > 0 && audiencia > 0 && <p className="mt-2 text-[12px] text-ink-2">≈ <b>{fmtNum(nControl)}</b> personas quedarán sin mensaje y <b>{fmtNum(audiencia - nControl)}</b> lo recibirán. El costo se calcula solo sobre quienes lo reciben.</p>}

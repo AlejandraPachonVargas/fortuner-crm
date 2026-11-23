@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 import logging
 import threading
 import time
@@ -22,6 +23,8 @@ from .modules.automatizaciones.motor import ejecutar_pendientes
 from .modules.automatizaciones.router import router as automatizaciones_router
 from .modules.campanas.router import router as campanas_router
 from .modules.clientes.router import router as clientes_router
+from .modules.configuracion.router import publico as configuracion_publico
+from .modules.configuracion.router import router as configuracion_router
 from .modules.imagenes.router import router as imagenes_router
 from .security import SECURITY_HEADERS, require_admin, require_api_key, verificar_configuracion
 from .store import get_store
@@ -52,6 +55,38 @@ def _depurar_vencidas(store) -> bool:
     return True
 
 
+def etl_programada(ahora: datetime | None = None) -> bool:
+    """Carga automática del ERP (Configuración › Carga del ERP): una vez al día, dentro de las 4 horas siguientes a la
+    hora elegida (si el servidor estaba apagado a esa hora, la hace al encender, dentro de esa ventana)."""
+    from .modules.configuracion.general import get_general
+    g = get_general()
+    cfg = g.seccion("etl")
+    if not cfg["automatica"] or not get_settings().ads_data_directory:
+        return False
+    ahora = ahora or datetime.now()
+    h, m = (int(x) for x in str(cfg["hora"]).split(":"))
+    inicio = ahora.replace(hour=h, minute=m, second=0, microsecond=0)
+    if not (inicio <= ahora < inicio + timedelta(hours=4)):
+        return False
+    hoy = ahora.date().isoformat()
+    if g.interno("etl_ultima") == hoy or pipeline.estado()["corriendo"]:
+        return False
+    g.fijar_interno("etl_ultima", hoy)
+
+    def _run() -> None:
+        try:
+            pipeline.ejecutar()
+            g.fijar_interno("etl_resultado", {"fecha": datetime.now().isoformat(timespec="seconds"), "ok": True})
+        except Exception as e:
+            log.exception("Falló la carga automática del ERP")
+            g.fijar_interno("etl_resultado", {"fecha": datetime.now().isoformat(timespec="seconds"), "ok": False,
+                                              "error": type(e).__name__})
+
+    threading.Thread(target=_run, name="etl-automatica", daemon=True).start()
+    log.info("Carga automática del ERP iniciada (%s)", cfg["hora"])
+    return True
+
+
 def _depurar_banners(store) -> None:
     """Borra los banners subidos que ninguna campaña usa (después de 24 h): no quedan imágenes ocupando espacio."""
     from .modules.imagenes import banners
@@ -68,6 +103,7 @@ async def _planificador(store) -> None:
             if time.monotonic() - ultima_limpieza > 3600:      # una vez por hora
                 ultima_limpieza = time.monotonic()
                 await asyncio.to_thread(_depurar_banners, store)
+            await asyncio.to_thread(etl_programada)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -195,6 +231,8 @@ app.include_router(campanas_router, dependencies=[Depends(require_api_key)])
 app.include_router(clientes_router, dependencies=[Depends(require_api_key)])
 app.include_router(analitica_router, dependencies=[Depends(require_api_key)])
 app.include_router(automatizaciones_router, dependencies=[Depends(require_api_key)])
+app.include_router(configuracion_router, dependencies=[Depends(require_api_key)])   # cambiar exige además la clave de administración
+app.include_router(configuracion_publico)   # página de baja, logo y política: públicos a propósito
 app.include_router(imagenes_router)   # la lista exige clave; la foto (/media/productos/…) es pública: ver el módulo
 
 

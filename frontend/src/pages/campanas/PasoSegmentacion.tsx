@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { CalendarClock, ChevronDown, Crown, MoonStar, Package, Repeat, Sprout, Gauge, UserPlus, UserX, Info, ListOrdered, MessageCircle, Mail, MessageSquareText, PieChart, ShieldAlert, SlidersHorizontal, Sparkles, Target, UserRound, Users, Wallet, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Badge, Bars, Btn, Card, ChipGroup, ErrorBox, Notice, Seccion, Skeleton } from '@/components/ui'
-import { api, useGet, type OpcionesSeg, type Preview, type Producto, type Temporada } from '@/lib/api'
+import { api, useConfigGeneral, useGet, type OpcionesSeg, type Preview, type Producto, type Temporada } from '@/lib/api'
 import { CANAL_LABEL, DIAS, fmtCop, fmtNum } from '@/lib/format'
 
 export type FiltrosSeg = Record<string, unknown>
@@ -96,7 +96,12 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
   const r = prev?.resumen
   const nActivos = Object.entries(filtros).filter(([k, v]) => !['costos', 'consentimiento', 'objetivo', 'habitual_compras', 'habitual_dias'].includes(k) && v !== 'no' && (Array.isArray(v) ? v.length > 0 : v !== '' && v !== 0 && v !== false && v != null)).length
   const excluir = String(filtros.excluir_compradores ?? 'no')
-  const habN = Number(filtros.habitual_compras ?? 3), habD = Number(filtros.habitual_dias ?? 180)
+  const reglas = useConfigGeneral().data?.valores.reglas
+  const habN = Number(filtros.habitual_compras ?? reglas?.habitual_compras ?? 3), habD = Number(filtros.habitual_dias ?? reglas?.habitual_dias ?? 180)
+  const conValor = (base: number[], v: number) => [...new Set([...base, v])].sort((a, b) => a - b)
+  // Las estrategias listas usan las reglas de Configuración (días sin contactar y definición de comprador habitual).
+  const reglaEstrategia = (f: FiltrosSeg): FiltrosSeg => f.excluir_compradores === 'habituales'
+    ? { ...f, habitual_compras: reglas?.habitual_compras ?? 3, habitual_dias: reglas?.habitual_dias ?? 180 } : f
   const costos = (filtros.costos as Record<string, number> | undefined) ?? op?.costos ?? { whatsapp: 120, sms: 45, email: 3 }
 
   return (
@@ -133,7 +138,7 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
         <Card icon={<Zap size={18} />} title="Estrategias listas" subtitle="Un clic configura los segmentadores; luego puede afinarlos">
           <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
             {ESTRATEGIAS.map((e) => (
-              <button key={e.id} type="button" onClick={() => onChange({ consentimiento: filtros.consentimiento ?? 'estricto', costos: filtros.costos, tope_contactos: filtros.tope_contactos, excluir_contactados_dias: '15', ...e.filtros })}
+              <button key={e.id} type="button" onClick={() => onChange({ consentimiento: filtros.consentimiento ?? 'estricto', costos: filtros.costos, tope_contactos: filtros.tope_contactos, excluir_contactados_dias: String(reglas?.excluir_contactados_dias ?? 15), ...reglaEstrategia(e.filtros) })}
                 className="flex items-start gap-2.5 rounded-xl border border-line-strong p-2.5 text-left transition hover:border-brand hover:bg-brand-soft">
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand" aria-hidden>{e.icono}</span>
                 <span className="min-w-0"><span className="block text-[12.5px] font-bold text-ink">{e.titulo}</span><span className="block text-[11.5px] leading-snug text-ink-3">{e.desc}</span></span>
@@ -191,11 +196,11 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
                   <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">
                     Habitual = compró
                     <select aria-label="Mínimo de compras" value={habN} onChange={(e) => set({ habitual_compras: Number(e.target.value) })} className="h-8 rounded-lg border border-line-strong bg-surface px-2">
-                      {(op?.habitual_compras ?? [2, 3, 4, 6]).map((n) => <option key={n} value={n}>{n} o más veces</option>)}
+                      {conValor(op?.habitual_compras ?? [2, 3, 4, 6], habN).map((n) => <option key={n} value={n}>{n} o más veces</option>)}
                     </select>
                     en los últimos
                     <select aria-label="Ventana de días" value={habD} onChange={(e) => set({ habitual_dias: Number(e.target.value) })} className="h-8 rounded-lg border border-line-strong bg-surface px-2">
-                      {(op?.habitual_dias ?? [90, 180, 365]).map((n) => <option key={n} value={n}>{n} días</option>)}
+                      {conValor(op?.habitual_dias ?? [90, 180, 365], habD).map((n) => <option key={n} value={n}>{n} días</option>)}
                     </select>
                   </div>
                 )}

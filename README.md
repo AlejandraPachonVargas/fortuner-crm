@@ -20,7 +20,7 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 6. [Despliegue en el servidor Windows](#6-despliegue-en-el-servidor-windows)
 7. [Conexión con ADVANTAGE / Publidata](#7-conexión-con-advantage--publidata)
 8. [Modelo de datos analítico](#8-modelo-de-datos-analítico)
-9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas) · [9.3 Automatizaciones](#93-automatizaciones) · [9.4 Fotos de producto](#94-fotos-de-producto)
+9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas) · [9.3 Automatizaciones](#93-automatizaciones) · [9.4 Fotos de producto](#94-fotos-de-producto) · [9.5 Configuración](#95-configuración-canales-de-difusión)
 10. [Cómo se usa la IA (DeepSeek)](#10-cómo-se-usa-la-ia-deepseek)
 11. [Segmentación de clientes](#11-segmentación-de-clientes)
 12. [Auditoría: seguridad y efectividad](#12-auditoría-seguridad-y-efectividad)
@@ -463,6 +463,50 @@ ninguna campaña usa y tienen más de 24 h. *Pendiente:* las ediciones de Automa
 
 ---
 
+## 9.5 Configuración (canales de difusión)
+
+Menú **Más › Configuración**. Manual de uso: [`docs/MANUAL_CONFIGURACION.md`](docs/MANUAL_CONFIGURACION.md).
+
+| Canal | Proveedores | Lo que pide (obligatorio) |
+|---|---|---|
+| WhatsApp | API de Meta (WhatsApp Business Platform) | token permanente, Phone number ID, WABA ID, versión Graph, plantilla de marketing aprobada (nombre, idioma, encabezado, variables `{{n}}`), costo |
+| Correo | Gmail/Workspace (SMTP fijo) u otro SMTP | servidor, puerto, seguridad (STARTTLS/SSL, nunca sin cifrar), usuario, contraseña, remitente, límite diario, costo |
+| SMS | Twilio, Infobip, LabsMobile o API HTTP genérica | credenciales del proveedor, remitente, indicativo, costo (genérico: URL https, encabezado de autenticación y cuerpo JSON con `{numero}` y `{mensaje}`) |
+
+* **Un canal solo se usa si está completo y activo**: en el paso Mensaje (campañas y ediciones de automatizaciones) los
+  demás se ven opacos y no se pueden elegir; publicar una campaña con un canal no disponible responde 422; una
+  automatización solo envía por sus canales disponibles y, si no tiene ninguno, registra «sin canal» y no envía.
+* **Secretos cifrados** (Fernet) en `crm.sqlite`; nunca vuelven a la pantalla (solo «guardado …últimos 4»). Clave:
+  `CRM_CIFRADO_CLAVE` en `.env` o, si falta, `data/clave_cifrado.key` (respaldarla con la base). Sin la clave: estado
+  «Credenciales ilegibles» y el canal queda no disponible (falla cerrada).
+* **Permisos**: leer con la clave normal; guardar, probar y traer plantillas solo con la clave de administración.
+  Cada cambio queda en `auditoria` (quién, cuándo y qué campos; nunca valores).
+* **Probar conexión** valida las credenciales sin enviar mensajes (Meta: datos del número; SMTP: inicio de sesión;
+  Twilio/Infobip/LabsMobile: cuenta o saldo). **Traer de Meta** lista las plantillas y llena nombre, idioma,
+  encabezado y número de variables.
+* El **costo por mensaje** de cada canal alimenta las estimaciones de Campañas, Automatizaciones y Analítica.
+* API: `GET /api/configuracion`, `GET /api/configuracion/disponibles`, `PUT /api/configuracion/canales/{canal}`,
+  `POST /api/configuracion/canales/{canal}/probar`, `POST /api/configuracion/canales/whatsapp/plantillas`.
+
+**Pestañas de Configuración (además de Canales)** — tabla `configuracion_general` (una fila JSON por sección, con
+valores por defecto si no se ha guardado nada):
+
+| Pestaña | Qué hace | Dónde se aplica |
+|---|---|---|
+| Empresa | nombre, razón social, NIT, dirección, contacto, enlace y texto del botón de la tienda, redes, color; logo (`/media/empresa/logo.webp`) | vista previa de WhatsApp/SMS/correo, página de baja, IA (`redaccion.generar(empresa=…)`) |
+| Legal y RNE | enlace o PDF de la política (`/media/legal/politica.pdf`), pie legal del correo, dirección pública del CRM, RNE (activo, canales, antigüedad máxima, exención de autorizados) | pie del correo; `restricciones_contacto()` suma bajas y RNE a `canales_bloqueados`; RNE vencido bloquea esos canales |
+| Reglas de campañas | días sin contactar, % de control, vigencia máxima, comprador habitual, factor y tope del descuento | estrategias y campañas nuevas, `programacion.vigencia`, `segmentos.normalizar`, `productos.calculo_descuento` |
+| Presupuesto | tope mensual por canal y % de alerta | `presupuesto.consumo()`; canal agotado = no disponible; publicar rechaza (422) si la campaña pasa el tope; aviso en la cabecera |
+| Carga del ERP | carga diaria a una hora (por defecto 03:00) | planificador (`api.etl_programada`): una vez al día, ventana de 4 h |
+| Fotos de productos | ver, verificar, subir/cambiar y quitar la foto de cada producto | manifiesto de `data/imagenes`; las subidas a mano quedan verificadas y la importación no las reemplaza |
+
+* **Baja de suscripción:** enlace `/baja?t=<token Fernet>` (sin la cédula a la vista) → página pública con la marca →
+  `baja_canal` (efecto inmediato en el CRM) y, si `CRM_CLIENTES_ESCRITURA=true`, INFOELEC/INFOTEX/INFOWAS = false en POSCLI.
+* **RNE (Ley 2300 de 2023):** la CRC no tiene API pública; la empresa se inscribe en tramitescrcom.gov.co, descarga el
+  listado y lo carga (CSV/TXT; se extraen celulares, fijos y correos) → `rne_registro`. Cubre SMS, apps, correo y llamadas;
+  la CRC lo actualiza a diario y pide consultarlo antes de cada envío.
+* `GET /api/configuracion/disponibles` devuelve además el **motivo** por el que un canal no se puede usar.
+
 ## 10. Cómo se usa la IA (DeepSeek)
 
 Tres usos, todos con **JSON estricto**, reintentos con espera exponencial y conteo de tokens visible en pantalla:
@@ -695,5 +739,7 @@ cliente no es un recurso ilimitado: la saturación destruye la base.
 | 2026-11-20 | **Productos y gráficas.** *Corrección:* la búsqueda de productos no encontraba, por ejemplo, ningún aguardiente: el modelo tomaba `INBLOQUEO = 'Z'` como bloqueo (lo tiene la mitad del catálogo, incluidos los más vendidos) y solo 2.624 de 21.613 productos quedaban activos; ahora 11.568. Además, buscar por nombre o código revisa todo el catálogo (con la etiqueta «Inactivo en el ERP» cuando aplica) y «solo activos» incluye lo vendido en 90 días. *Nuevo:* «¿Cómo se calculó?» en el descuento sugerido (margen × 60 %, tope 30 %, con precio y ganancia resultantes). Los días sin venta ya no salen negativos. Pirámides de edad: mujeres en menta y hombres en azul. **Después de actualizar: `crm modelo`.** |
 | 2026-11-18 | **Automatizaciones (§9.3).** Cumpleaños, bienvenida, segunda compra y reactivación, con ediciones por periodo (oferta y mensajes distintos por año), las reglas legales de Campañas, prueba «¿a quién le tocaría?», historial de ejecuciones y planificador diario. Envíos simulados por cliente y día que cuentan como contacto reciente y se ven en la Analítica de campañas. 14 pruebas nuevas de backend. |
 | 2026-11-23 | **Fotos de producto (§9.4).** Análisis de `D:\images_static` (21.617 archivos, 4,46 GB: solo 9.033 sirven; el resto son archivos vacíos, fotos sin producto y otra aplicación). Nuevo comando `crm imagenes importar` que deja solo las fotos de productos del catálogo, en WebP (8.183 productos, ~200 MB), y las muestra en Campañas y Automatizaciones. Banner del publicista en WhatsApp y correo («Cargar imagen» en el paso Mensaje) y (x) para quitar fotos de la vista previa. Segmentación: estrategia «Atraer nuevos compradores» (excluye compradores habituales o todos; objetivo «Captar»), y «SIN MARCA» deja de contar como afinidad de marca. Nueva dependencia: Pillow. **Después de actualizar: `bash scripts/instalar.sh` y `crm imagenes importar --origen "D:/images_static"`.** |
+| 2026-11-23 | **Configuración (§9.5).** Canales WhatsApp (API de Meta, con plantilla y variables), correo (Gmail u otro SMTP) y SMS (Twilio, Infobip, LabsMobile o API HTTP) configurables desde la interfaz, con secretos cifrados, «Probar conexión» sin enviar mensajes y plantillas traídas de Meta. Un canal incompleto o desactivado se ve opaco y no se puede usar. Nueva dependencia: cryptography. Manual: `docs/MANUAL_CONFIGURACION.md`. **En el servidor: agregar `CRM_CIFRADO_CLAVE` al `.env` antes de configurar los canales.** |
+| 2026-11-24 | **Configuración, segunda parte (§9.5).** Pestañas Empresa (marca y logo en las vistas previas y la IA), Legal y RNE (política, pie del correo, baja de suscripción con página pública y Registro de Números Excluidos importado), Reglas de campañas (antes fijas), Presupuesto (topes mensuales con alertas y bloqueo), Carga automática del ERP a una hora y Fotos de productos una a una (verificar, subir, quitar). Corrección: «SIN MARCA» ya no cuenta como afinidad de marca. Manual: `docs/MANUAL_CONFIGURACION.md` v2. |
 | 2026-11-17 | **Analítica (§9.2).** Tablero de clientes (clubes, comportamiento, demografía, contactabilidad) y tablero de campañas (alcance, costo, canales, presión de contacto y efectividad envío vs control). Campo de vigencia: se pueden escribir 31 días o más (hasta 90) y botón «Hasta fin de mes». 8 pruebas nuevas de backend y 5 de frontend. |
 | 2026-11-13 | **Rediseño visual Fortuner 27** (solo visual, `GUIA_REDISENO_MODULOS.md`): logo, paleta y tipografía Poppins de Fortuner; cabecera de dos filas en lugar de la barra lateral (grupos con menú desplegable, también en celular); botones, campos, tarjetas, tablas, insignias, alertas, modales y pestañas con el nuevo aspecto; pantalla de clave de acceso con el diseño de ingreso de Fortuner. Sin cambios de rutas, API, permisos ni lógica. |
