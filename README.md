@@ -20,7 +20,7 @@ qué se auditó y qué falta. Se actualiza con cada desarrollo.
 6. [Despliegue en el servidor Windows](#6-despliegue-en-el-servidor-windows)
 7. [Conexión con ADVANTAGE / Publidata](#7-conexión-con-advantage--publidata)
 8. [Modelo de datos analítico](#8-modelo-de-datos-analítico)
-9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas) · [9.3 Automatizaciones](#93-automatizaciones)
+9. [Módulo Campañas: las 5 pantallas](#9-módulo-campañas-las-5-pantallas) · [9.1 Clientes 360°](#91-clientes-360-gestor-de-clientes) · [9.2 Analítica](#92-analítica-tableros-de-clientes-y-de-campañas) · [9.3 Automatizaciones](#93-automatizaciones) · [9.4 Fotos de producto](#94-fotos-de-producto)
 10. [Cómo se usa la IA (DeepSeek)](#10-cómo-se-usa-la-ia-deepseek)
 11. [Segmentación de clientes](#11-segmentación-de-clientes)
 12. [Auditoría: seguridad y efectividad](#12-auditoría-seguridad-y-efectividad)
@@ -123,7 +123,7 @@ fortuner-crm/
 │   │   ├── config.py            configuración (.env)
 │   │   ├── security.py          claves, límite de tasa, cabeceras, arranque seguro
 │   │   ├── api.py               aplicación FastAPI (+ sirve la SPA)
-│   │   ├── cli.py               comandos: probar-ads, etl, modelo, servir
+│   │   ├── cli.py               comandos: probar-ads, etl, modelo, servir, clientes, imagenes
 │   │   ├── store.py             SQLite: campañas, destinatarios, auditoría
 │   │   ├── warehouse.py         acceso de solo lectura a DuckDB
 │   │   ├── etl/
@@ -137,12 +137,13 @@ fortuner-crm/
 │   │       ├── productos.py     filtros + recomendaciones (temporada, inventario)
 │   │       ├── redaccion.py     mensajes por canal + validación SMS
 │   │       └── segmentos.py     segmentación y puntaje
+│   │   (además modules/clientes, analitica, automatizaciones e imagenes: importador y entrega de fotos de producto)
 │   └── tests/
 ├── frontend/                    React + Vite + Tailwind (mismos tokens visuales que dashboards)
 │   └── src/pages/campanas/      Historial · Wizard · PasoProductos · PasoMensaje · PasoSegmentacion · ResumenCampana · Detalle
 ├── scripts/                     instalar · cargar-datos · iniciar · instalar-servicio (PowerShell)
 ├── .env.example                 plantilla de configuración (el .env real NO se versiona)
-└── data/                        (ignorado por git) staging, warehouse, crm.sqlite, logs
+└── data/                        (ignorado por git) staging, warehouse, crm.sqlite, imagenes, logs
 ```
 
 ---
@@ -417,6 +418,49 @@ campañas y aparecen en la Analítica de campañas.
 **Datos** (en `data/crm.sqlite`): `automatizacion`, `automatizacion_edicion`, `automatizacion_ejecucion` y
 `automatizacion_envio` (un registro por cliente y día, con la vigencia de la oferta). API: `/api/automatizaciones`.
 
+## 9.4 Fotos de producto
+
+Las fotos se ven en Campañas (búsqueda, inventario, temporada, productos elegidos, resumen y la vista previa del correo) y
+en las ofertas de Automatizaciones. Sin foto se muestra un ícono neutro.
+
+**De dónde salen.** Se importan una vez desde la carpeta de fotos (`D:\images_static`, 21.617 archivos, 4,46 GB). El
+nombre de cada archivo es el código del producto: el **código de barras** (`producto.ean`, también con ceros de más a la
+izquierda) o el **código interno corto** (los últimos 6 dígitos del código del ERP, solo si es único). Análisis de la
+carpeta (noviembre de 2026):
+
+| Contenido | Archivos | ¿Se usa? |
+|---|---|---|
+| `products\` con producto en el catálogo | 9.033 (2,9 GB) | Sí: una por producto → 8.183 productos con foto |
+| `products\` vacíos (0 bytes, descargas fallidas) | 4.125 | No. 2.088 son de productos vendidos en los últimos 90 días: hay que pedir esas fotos |
+| `products\_sin_producto\` | 6.934 (1,9 GB) | No: no corresponden a ningún producto |
+| `media\` (marcas, categorías, domiciliarios, *picking*…) | 1.516 | No: todos vacíos y de otra aplicación |
+
+**Comando.** `crm imagenes importar --origen "D:/images_static"` (después de `crm modelo`): elige una foto por producto, la
+valida, la convierte a WebP (600 px y miniatura de 160 px) y la guarda en `data/imagenes/productos/<producto_id>.webp`
+(~200 MB; no va a git). Nunca modifica la carpeta de origen. Se puede repetir con la misma u otra carpeta: solo procesa
+lo nuevo o lo que cambió, conserva lo ya importado y **borra las fotos de productos que ya no están en el catálogo**, así
+que en `data/imagenes` solo quedan fotos útiles. Una vez importadas, la carpeta original se puede borrar.
+`crm imagenes estado` dice cuántos productos tienen foto.
+
+**Por qué así (y no en la base de datos ni leyendo la carpeta).** En ADVANTAGE no se puede cambiar la estructura; en
+SQLite/DuckDB las fotos inflarían la base y el warehouse se reconstruye en cada carga; leer la carpeta original serviría
+fotos de 300 KB (en WebP pesan ~23 KB), dependería de una ruta fija y el 58 % de su contenido no sirve.
+
+**API.** `GET /api/productos/imagenes` (con clave) → qué productos tienen foto y la versión. `GET /media/productos/<id>.webp`
+(`?t=mini` para la miniatura) es **pública a propósito**: un `<img>` no puede enviar la clave, son fotos de catálogo sin
+datos personales y la difusión real necesitará enlazarlas. Solo acepta códigos numéricos dentro de `data/imagenes`; con
+`?v=<versión>` el navegador la guarda en caché un año.
+
+**Banner de la campaña (imagen del publicista).** En el paso Mensaje, «Imagen del mensaje → Cargar imagen» (JPG, PNG o
+WebP hasta 8 MB; ideal horizontal 1200 × 628 px). Se ve al instante en la vista previa: en WhatsApp va arriba del texto
+en lugar de la foto del producto (WhatsApp admite una sola imagen) y en el correo va debajo del encabezado. Cada imagen
+de la vista previa tiene una **(x)**: quita el banner u oculta la foto (y la tarjeta) de un producto; «Mostrar de nuevo»
+las recupera. Se guarda en el mensaje de la campaña (`banner` = {id, ancho, alto, nombre}; `fotos_ocultas` = códigos).
+Seguridad: `POST /api/campanas/banners` (con clave) recibe la imagen, la valida con Pillow (formato, tamaño y
+megapíxeles) y la **reescribe** como WebP de máximo 1200 px con un nombre aleatorio (se descartan metadatos y cualquier
+contenido que no sea imagen). Se sirve en `/media/banners/<id>.webp`. El planificador borra cada hora los banners que
+ninguna campaña usa y tienen más de 24 h. *Pendiente:* las ediciones de Automatizaciones aún no guardan banner.
+
 ---
 
 ## 10. Cómo se usa la IA (DeepSeek)
@@ -451,7 +495,8 @@ El objetivo es que cada peso de difusión llegue a quien más probablemente resp
 | 7 | **Demografía** (género, edad), **clubes** del POS, **ciudad** | Segmentación clásica, disponible como check-list |
 | 8 | **Perfil del comprador ideal (*lookalike*)**: compara a quienes ya compran estos productos contra toda la base (*lift*) | La recomendación sale de **datos**, no de opinión; la IA la explica |
 | 9 | **Reglas de contacto**: consentimiento, no saturar (excluir a quien recibió otra campaña en N días), exclusión de menores si hay licor/tabaco | Cumplimiento legal y cuidado del cliente |
-| 10 | **Curva de concentración (Pareto) y corte recomendado** | Muestra cuánto potencial se captura con cada % de la audiencia (potencial relativo ∝ puntaje³, porque la respuesta se concentra en los mejores) → se recorta donde el costo marginal deja de valer la pena. El corte recomendado es el punto que captura el 80 % |
+| 10 | **Captación de nuevos compradores**: excluir a quienes ya compran los productos — los **habituales** (N o más facturas con alguno de ellos en los últimos D días; por defecto 3 en 180) o **todos** los que alguna vez los compraron — y puntuar a los demás por **parecido** (categoría, marca, valor), sin premiar la compra previa | Atraer clientes nuevos al producto sin gastar mensajes en quien ya lo compra de todas formas. Estrategia lista «Atraer nuevos compradores» |
+| 11 | **Curva de concentración (Pareto) y corte recomendado** | Muestra cuánto potencial se captura con cada % de la audiencia (potencial relativo ∝ puntaje³, porque la respuesta se concentra en los mejores) → se recorta donde el costo marginal deja de valer la pena. El corte recomendado es el punto que captura el 80 % |
 
 **Puntaje de propensión (0–100)** = `afinidad·w₁ + momento·w₂ + valor·w₃ + recencia·w₄ + estacionalidad·w₅ + descuento·w₆`, con pesos según el **objetivo**:
 
@@ -461,6 +506,15 @@ El objetivo es que cada peso de difusión llegue a quien más probablemente resp
 | Rotar inventario | .30 | .15 | .05 | .15 | .10 | .25 |
 | Clientes de alto valor | .35 | .15 | .30 | .10 | .10 | — |
 | Reactivar dormidos | .30 | .40 | .15 | .05 | .10 | — |
+| Captar nuevos compradores | .45* | .10 | .20 | .15 | .10 | — |
+
+\* En «Captar» la afinidad no cuenta «ya compró este producto» (`a_producto` pesa 0): solo el gasto en el mismo grupo o
+familia y la preferencia por la marca. La marca «SIN MARCA» (20.857 de 21.613 productos) nunca cuenta como preferencia de
+marca. **Cómo leer la curva en captación:** ordena a quienes no compran el producto por su parecido con quienes sí; suele
+ser más plana que en una campaña de recompra (nadie tiene la evidencia fuerte de «ya lo compró»), así que el corte
+recomendado deja a más personas. El bloque «Relación con estos productos» de «Quiénes son» muestra cuántos nunca lo han
+comprado, lo compraron una vez o varias. Ejemplo real (Aguardiente Amarillo 750 ml, grupo Licores): 10.973 personas,
+79 compradores habituales excluidos, 91 % nunca lo ha comprado.
 
 **Limitación honesta:** es un modelo **heurístico y explicable**, no entrenado con respuestas reales (aún no existen). Mientras no se envíen campañas reales no se puede
 calibrar «probabilidad de compra». El puntaje ordena bien (quién es mejor candidato que quién), pero **no** es una probabilidad. Ver [§16](#16-roadmap).
@@ -640,5 +694,6 @@ cliente no es un recurso ilimitado: la saturación destruye la base.
 | 2026-11-17 | **Auditoría fase 2.** Datos: una línea es venta si su artículo es un código de producto (se recupera la serie RO de la sucursal 83 y las series R con productos); recencia y ciclo contra la **fecha de corte** de los datos; edad exacta (años cumplidos) y fecha de nacimiento MMDD+ANON. Consentimiento: «No autoriza» marca `BLOQUE=false` en POSCLI y «Sí autoriza» lo vacía; Campañas verifica consentimiento, BLOQUE, estado, edad y canales contra el ERP en vivo al calcular, publicar y ejecutar las programadas (falla cerrada). Campañas: vigencia obligatoria con marcador `{vigencia}`, sin invitación a responder NO, el asistente ya no arrastra otra campaña. **Después de actualizar: `crm etl`.** |
 | 2026-11-20 | **Productos y gráficas.** *Corrección:* la búsqueda de productos no encontraba, por ejemplo, ningún aguardiente: el modelo tomaba `INBLOQUEO = 'Z'` como bloqueo (lo tiene la mitad del catálogo, incluidos los más vendidos) y solo 2.624 de 21.613 productos quedaban activos; ahora 11.568. Además, buscar por nombre o código revisa todo el catálogo (con la etiqueta «Inactivo en el ERP» cuando aplica) y «solo activos» incluye lo vendido en 90 días. *Nuevo:* «¿Cómo se calculó?» en el descuento sugerido (margen × 60 %, tope 30 %, con precio y ganancia resultantes). Los días sin venta ya no salen negativos. Pirámides de edad: mujeres en menta y hombres en azul. **Después de actualizar: `crm modelo`.** |
 | 2026-11-18 | **Automatizaciones (§9.3).** Cumpleaños, bienvenida, segunda compra y reactivación, con ediciones por periodo (oferta y mensajes distintos por año), las reglas legales de Campañas, prueba «¿a quién le tocaría?», historial de ejecuciones y planificador diario. Envíos simulados por cliente y día que cuentan como contacto reciente y se ven en la Analítica de campañas. 14 pruebas nuevas de backend. |
+| 2026-11-23 | **Fotos de producto (§9.4).** Análisis de `D:\images_static` (21.617 archivos, 4,46 GB: solo 9.033 sirven; el resto son archivos vacíos, fotos sin producto y otra aplicación). Nuevo comando `crm imagenes importar` que deja solo las fotos de productos del catálogo, en WebP (8.183 productos, ~200 MB), y las muestra en Campañas y Automatizaciones. Banner del publicista en WhatsApp y correo («Cargar imagen» en el paso Mensaje) y (x) para quitar fotos de la vista previa. Segmentación: estrategia «Atraer nuevos compradores» (excluye compradores habituales o todos; objetivo «Captar»), y «SIN MARCA» deja de contar como afinidad de marca. Nueva dependencia: Pillow. **Después de actualizar: `bash scripts/instalar.sh` y `crm imagenes importar --origen "D:/images_static"`.** |
 | 2026-11-17 | **Analítica (§9.2).** Tablero de clientes (clubes, comportamiento, demografía, contactabilidad) y tablero de campañas (alcance, costo, canales, presión de contacto y efectividad envío vs control). Campo de vigencia: se pueden escribir 31 días o más (hasta 90) y botón «Hasta fin de mes». 8 pruebas nuevas de backend y 5 de frontend. |
 | 2026-11-13 | **Rediseño visual Fortuner 27** (solo visual, `GUIA_REDISENO_MODULOS.md`): logo, paleta y tipografía Poppins de Fortuner; cabecera de dos filas en lugar de la barra lateral (grupos con menú desplegable, también en celular); botones, campos, tarjetas, tablas, insignias, alertas, modales y pestañas con el nuevo aspecto; pantalla de clave de acceso con el diseño de ingreso de Fortuner. Sin cambios de rutas, API, permisos ni lógica. |

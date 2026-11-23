@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CalendarClock, ChevronDown, Crown, MoonStar, Package, Repeat, Sprout, Gauge, Info, ListOrdered, MessageCircle, Mail, MessageSquareText, PieChart, ShieldAlert, SlidersHorizontal, Sparkles, Target, UserRound, Users, Wallet, Zap } from 'lucide-react'
+import { CalendarClock, ChevronDown, Crown, MoonStar, Package, Repeat, Sprout, Gauge, UserPlus, UserX, Info, ListOrdered, MessageCircle, Mail, MessageSquareText, PieChart, ShieldAlert, SlidersHorizontal, Sparkles, Target, UserRound, Users, Wallet, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Badge, Bars, Btn, Card, ChipGroup, ErrorBox, Notice, Seccion, Skeleton } from '@/components/ui'
 import { api, useGet, type OpcionesSeg, type Preview, type Producto, type Temporada } from '@/lib/api'
@@ -23,6 +23,8 @@ const ESTRATEGIAS: { id: string; icono: ReactNode; titulo: string; desc: string;
     filtros: { objetivo: 'premium', segmentos_rfm: ['campeones', 'leales'], valor: ['alto'] } },
   { id: 'rotar', icono: <Package size={17} />, titulo: 'Rotar inventario', desc: 'Quienes responden a descuentos y compran en esta familia o grupo.',
     filtros: { objetivo: 'rotar_inventario', descuento: ['alta', 'media'], afinidad_requerida: ['producto', 'grupo', 'familia'] } },
+  { id: 'captar', icono: <UserPlus size={17} />, titulo: 'Atraer nuevos compradores', desc: 'Compran en el mismo grupo o la misma marca, pero no estos productos con regularidad (se excluyen los habituales).',
+    filtros: { objetivo: 'captar', excluir_compradores: 'habituales', habitual_compras: 3, habitual_dias: 180, afinidad_requerida: ['grupo', 'marca'] } },
   { id: 'segunda', icono: <Sprout size={17} />, titulo: 'Segunda compra', desc: 'Clientes nuevos y prometedores: convertir la primera visita en hábito.',
     filtros: { objetivo: 'equilibrado', segmentos_rfm: ['nuevos', 'prometedores'], afinidad_requerida: ['producto', 'grupo', 'familia'] } },
 ]
@@ -32,7 +34,9 @@ const MAPA_EDAD: Record<string, string> = { '18-24': '18–24', '25-34': '25–3
 const NOMBRE_CLAVE: Record<string, string> = {
   segmentos_rfm: 'Tipo de cliente (RFM)', ciclo: 'Ciclo de compra', sexo: 'Género', edades: 'Edad', clubs: 'Clubes', dias_pref: 'Día de compra',
   franjas: 'Franja horaria', valor: 'Valor del cliente', descuento: 'Sensibilidad a descuentos', afinidad_requerida: 'Afinidad', objetivo: 'Objetivo',
+  excluir_compradores: 'Excluir compradores',
 }
+const RELACION: Record<string, string> = { nunca: 'Nunca los ha comprado', una: 'Los compró 1 vez', varias: 'Los compró varias veces' }
 
 function Grupo({ titulo, ayuda, children }: { titulo: string; ayuda?: string; children: ReactNode }) {
   return (
@@ -90,7 +94,9 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
   const limpiar = () => onChange({ consentimiento: 'estricto', objetivo: 'equilibrado', costos: filtros.costos })
 
   const r = prev?.resumen
-  const nActivos = Object.entries(filtros).filter(([k, v]) => !['costos', 'consentimiento', 'objetivo'].includes(k) && (Array.isArray(v) ? v.length > 0 : v !== '' && v !== 0 && v !== false && v != null)).length
+  const nActivos = Object.entries(filtros).filter(([k, v]) => !['costos', 'consentimiento', 'objetivo', 'habitual_compras', 'habitual_dias'].includes(k) && v !== 'no' && (Array.isArray(v) ? v.length > 0 : v !== '' && v !== 0 && v !== false && v != null)).length
+  const excluir = String(filtros.excluir_compradores ?? 'no')
+  const habN = Number(filtros.habitual_compras ?? 3), habD = Number(filtros.habitual_dias ?? 180)
   const costos = (filtros.costos as Record<string, number> | undefined) ?? op?.costos ?? { whatsapp: 120, sms: 45, email: 3 }
 
   return (
@@ -172,6 +178,31 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
               </Grupo>
             </Seccion>
 
+            <Seccion titulo="Clientes que ya compran estos productos" icono={<UserX size={16} />} activos={excluir !== 'no' ? 1 : 0}>
+              <Grupo titulo="Para atraer clientes nuevos" ayuda="Se cuenta cada factura que tenga alguno de los productos elegidos">
+                <div role="radiogroup" aria-label="Excluir compradores" className="space-y-1.5">
+                  {([['no', 'No excluir a nadie'], ['habituales', 'Excluir a los compradores habituales'], ['todos', 'Excluir a todos los que ya los compraron (solo personas nuevas para estos productos)']] as const).map(([id, label]) => (
+                    <label key={id} className="flex cursor-pointer items-start gap-2 text-[12.5px] text-ink-2">
+                      <input type="radio" name="excluir_compradores" className="mt-0.5" checked={excluir === id} onChange={() => set({ excluir_compradores: id })} />{label}
+                    </label>
+                  ))}
+                </div>
+                {excluir === 'habituales' && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">
+                    Habitual = compró
+                    <select aria-label="Mínimo de compras" value={habN} onChange={(e) => set({ habitual_compras: Number(e.target.value) })} className="h-8 rounded-lg border border-line-strong bg-surface px-2">
+                      {(op?.habitual_compras ?? [2, 3, 4, 6]).map((n) => <option key={n} value={n}>{n} o más veces</option>)}
+                    </select>
+                    en los últimos
+                    <select aria-label="Ventana de días" value={habD} onChange={(e) => set({ habitual_dias: Number(e.target.value) })} className="h-8 rounded-lg border border-line-strong bg-surface px-2">
+                      {(op?.habitual_dias ?? [90, 180, 365]).map((n) => <option key={n} value={n}>{n} días</option>)}
+                    </select>
+                  </div>
+                )}
+                {excluir !== 'no' && <p className="mt-2 text-[11.5px] text-ink-3">Consejo: combínelo con el objetivo <b>Captar nuevos compradores</b>, que ordena a los demás por su parecido con quienes sí compran (categoría, marca y valor) en lugar de premiar la compra previa.</p>}
+              </Grupo>
+            </Seccion>
+
             <Seccion titulo="Perfil del cliente" icono={<UserRound size={16} />} activos={arr(filtros, 'sexo').length + arr(filtros, 'valor').length + arr(filtros, 'edades').length + arr(filtros, 'clubs').length}>
               <div className="grid gap-5 sm:grid-cols-2">
                 <Grupo titulo="Género"><ChipGroup value={arr<string>(filtros, 'sexo')} onChange={(v) => set({ sexo: v })} options={[{ id: 'F', label: 'Mujeres' }, { id: 'M', label: 'Hombres' }, { id: 'N', label: 'No registrado' }]} /></Grupo>
@@ -242,6 +273,16 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
             Verificado contra el ERP en este momento: se retiraron <b>{fmtNum((prev?.restricciones.excluidos_por_erp ?? 0) + (prev?.restricciones.excluidos_por_canal ?? 0))}</b> clientes que no autorizan el tratamiento de datos, están marcados para no recibir campañas, están inactivos{prev?.restricciones.excluye_menores ? ', son menores de edad' : ''} o no autorizan ninguno de los canales elegidos.
           </Notice>
         )}
+        {(prev?.restricciones.excluidos_por_campana_reciente ?? 0) > 0 && (
+          <Notice tone="info">
+            Se excluyeron <b>{fmtNum(prev?.restricciones.excluidos_por_campana_reciente ?? 0)}</b> clientes que recibieron otra campaña en los últimos {String(filtros.excluir_contactados_dias)} días (Reglas de contacto).
+          </Notice>
+        )}
+        {(prev?.restricciones.excluidos_compradores ?? 0) > 0 && (
+          <Notice tone="info" icon={<UserX size={15} className="mt-0.5 shrink-0" />}>
+            Se excluyeron <b>{fmtNum(prev?.restricciones.excluidos_compradores ?? 0)}</b> clientes que {excluir === 'todos' ? 'ya compraron estos productos alguna vez' : `ya compran estos productos con regularidad (${habN} o más compras en los últimos ${habD} días)`}.
+          </Notice>
+        )}
         {err != null && <ErrorBox error={err} />}
         <Card title="Audiencia resultante" actions={busy ? <Badge tone="warn">Calculando…</Badge> : undefined}>
           {!r ? <Skeleton h={180} /> : (
@@ -264,6 +305,9 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
               </div>
               {r.audiencia === 0 && <Notice tone="bad">Ningún cliente cumple estos filtros. Quite alguno o relaje el consentimiento.</Notice>}
               {r.curva.length > 2 && <Pareto curva={r.curva} corte={r.corte_recomendado} tope={Number(filtros.tope_contactos) || null} />}
+              {filtros.objetivo === 'captar' && r.curva.length > 2 && (
+                <p className="text-[11.5px] text-ink-3"><b className="text-ink-2">En captación</b> la curva ordena a quienes no compran estos productos por su parecido con quienes sí: gastan en la misma categoría o marca, compran seguido y hace poco. Los de arriba son los más fáciles de convertir; los de la cola casi no tienen relación con la categoría y conviene recortarlos.</p>
+              )}
               {r.corte_recomendado && r.audiencia_candidata > 200 && (
                 <Notice tone="info" icon={<Gauge size={15} className="mt-0.5 shrink-0" />}>
                   <b>Corte recomendado:</b> los primeros {fmtNum(r.corte_recomendado.contactos)} clientes ({r.corte_recomendado.pct_audiencia}% de la audiencia) concentran el {r.corte_recomendado.pct_potencial}% del potencial. El resto aporta muy poco por cada peso gastado.
@@ -281,6 +325,7 @@ export default function PasoSegmentacion({ filtros, onChange, productos, canales
                 <div><div className="mb-1.5 text-[12px] font-bold text-ink-2">Edad</div><Bars rows={r.edades.map((s) => ({ label: MAPA_EDAD[s.id] ?? s.id, n: s.n }))} total={r.audiencia} /></div>
                 <div><div className="mb-1.5 text-[12px] font-bold text-ink-2">Género</div><Bars rows={r.sexo.map((s) => ({ label: s.id === 'F' ? 'Mujeres' : s.id === 'M' ? 'Hombres' : 'No registrado', n: s.n }))} total={r.audiencia} /></div>
                 <div><div className="mb-1.5 text-[12px] font-bold text-ink-2">Momento de compra</div><Bars rows={r.ciclo.map((s) => ({ label: s.nombre, n: s.n }))} total={r.audiencia} /></div>
+                {(r.relacion_productos?.length ?? 0) > 0 && <div><div className="mb-1.5 text-[12px] font-bold text-ink-2">Relación con estos productos</div><Bars rows={(r.relacion_productos ?? []).map((s) => ({ label: RELACION[s.id] ?? s.id, n: s.n }))} total={r.audiencia} /></div>}
               </div>
             </Card>
             <Card icon={<ListOrdered size={18} />} pad={false} title="Los 25 mejores candidatos" subtitle="Datos personales enmascarados"

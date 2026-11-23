@@ -53,6 +53,18 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   try { return (await r.json()) as T } catch { return undefined as T }
 }
 
+/** Sube la imagen (banner) tal cual; el servidor la valida, la reescribe como WebP y devuelve su id. */
+export async function subirBanner(archivo: File): Promise<Banner> {
+  let r: Response
+  try {
+    r = await fetch('/api/campanas/banners', { method: 'POST', headers: { ...cabeceras(false), 'Content-Type': archivo.type || 'application/octet-stream' }, body: archivo })
+  } catch { throw new ApiError('No hay conexión con el servidor del CRM.', 0) }
+  if (!r.ok) return fallo(r)
+  const b = (await r.json()) as Banner
+  return { id: b.id, ancho: b.ancho, alto: b.alto, nombre: archivo.name.slice(0, 120) }
+}
+export const urlBanner = (id: string) => `/media/banners/${encodeURIComponent(id)}.webp`
+
 /** Descarga un archivo de la API (respeta la clave y el usuario). */
 export async function descargar(path: string, nombre: string): Promise<void> {
   let r: Response
@@ -94,8 +106,13 @@ export interface Textos {
   whatsapp?: { texto: string }; sms?: { texto: string }
   email?: { asunto: string; preheader?: string; cuerpo: string }
 }
+/** Imagen del publicista que va arriba en WhatsApp y en el correo. */
+export interface Banner { id: string; ancho?: number; alto?: number; nombre?: string }
 export interface Mensaje {
   modo: 'ia' | 'manual'; prompt: string; tono: string; canales: string[]; textos: Textos; tokens: number; temporada_id?: string | null
+  banner?: Banner | null
+  /** Productos cuya foto (y tarjeta) no se muestran en el mensaje: se quitan con la (x) de la vista previa. */
+  fotos_ocultas?: string[]
 }
 export interface Campana {
   id: string; nombre: string; objetivo: string; estado: 'borrador' | 'programada' | 'publicada'; paso: number
@@ -116,16 +133,18 @@ export interface Resumen {
   edades: { id: string; n: number }[]; ciclo: { id: string; nombre: string; n: number }[]; ciudades: { id: string; n: number }[]
   momento?: Momento
   curva: { pct_audiencia: number; pct_potencial: number; contactos: number; puntaje_corte: number }[]
+  relacion_productos?: { id: string; n: number }[]
   corte_recomendado: { contactos: number; pct_audiencia: number; pct_potencial: number; puntaje_minimo: number } | null
 }
 export interface Preview {
   resumen: Resumen
   muestra: { cliente: string; celular: string; correo: string; puntaje: number; afinidad: number; segmento: string; canales: string[]; motivos: string[] }[]
-  restricciones: { alcohol_o_tabaco: string[]; excluye_menores: boolean; excluidos_por_campana_reciente: number; excluidos_por_erp?: number; excluidos_por_canal?: number }
+  restricciones: { alcohol_o_tabaco: string[]; excluye_menores: boolean; excluidos_por_campana_reciente: number; excluidos_por_erp?: number; excluidos_por_canal?: number; excluidos_compradores?: number }
 }
 export interface OpcionesSeg {
   segmentos_rfm: Record<string, string>; ciclo: Record<string, string>; edades: string[]; clubs: string[]
   objetivos: Record<string, string>; costos: Record<string, number>; canales: string[]
+  excluir_compradores?: Record<string, string>; habitual_compras?: number[]; habitual_dias?: number[]
 }
 export interface Estado {
   datos: boolean; ia: boolean; zona: string; modo: string

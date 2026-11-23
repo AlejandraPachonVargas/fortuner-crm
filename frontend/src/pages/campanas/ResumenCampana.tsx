@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { CheckCircle2, CircleAlert, Package, Target, Wallet } from 'lucide-react'
 import { Badge, Card, Notice, Stat } from '@/components/ui'
 import type { Mensaje, Preview, Producto } from '@/lib/api'
+import FotoProducto from '@/components/FotoProducto'
 import VistaCanales from '@/components/VistaCanales'
 import { revisarCalidad, puntajeCalidad } from '@/lib/calidad'
 import { CANAL_LABEL, fmtCop, fmtNum } from '@/lib/format'
@@ -28,6 +29,9 @@ export function filtrosActivos(f: Record<string, unknown>): { k: string; v: stri
     if (Array.isArray(v) && v.length) out.push({ k: label, v: v.map((x) => (k === 'dias_pref' ? DIAS[Number(x)] : String(x))).join(', ') })
     else if (!Array.isArray(v) && v !== '' && v != null && v !== 0 && v !== false) out.push({ k: label, v: String(v) })
   }
+  if (f.excluir_compradores === 'habituales') out.push({ k: 'Excluye compradores', v: `habituales (${Number(f.habitual_compras ?? 3)}+ compras en ${Number(f.habitual_dias ?? 180)} días)` })
+  if (f.excluir_compradores === 'todos') out.push({ k: 'Excluye compradores', v: 'todos los que ya los compraron' })
+  if (f.objetivo === 'captar') out.push({ k: 'Objetivo', v: 'Captar nuevos compradores' })
   return out
 }
 
@@ -75,9 +79,12 @@ export default function ResumenCampana({ d, calidad = true }: { d: DatosCampana;
           {d.productos.length === 0 ? <p className="px-5 pb-5 text-[13px] text-ink-3">Sin productos.</p> : (
             <ul className="max-h-72 divide-y divide-line overflow-y-auto scroll-thin">
               {d.productos.map((p) => (
-                <li key={p.producto_id} className="px-5 py-2.5">
-                  <div className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{p.producto}</span><span className="text-[12px] font-semibold tnum text-ink-2">{p.precio_venta > 0 ? fmtCop(p.precio_venta) : 'Sin precio'}</span></div>
-                  {p.razon && <p className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-3">{p.razon}</p>}
+                <li key={p.producto_id} className="flex items-start gap-3 px-5 py-2.5">
+                  <FotoProducto id={p.producto_id} nombre={p.producto} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{p.producto}</span><span className="text-[12px] font-semibold tnum text-ink-2">{p.precio_venta > 0 ? fmtCop(p.precio_venta) : 'Sin precio'}</span></div>
+                    {p.razon && <p className="mt-0.5 line-clamp-2 text-[11.5px] text-ink-3">{p.razon}</p>}
+                  </div>
                 </li>
               ))}
             </ul>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from .modules.automatizaciones.motor import ejecutar_pendientes
 from .modules.automatizaciones.router import router as automatizaciones_router
 from .modules.campanas.router import router as campanas_router
 from .modules.clientes.router import router as clientes_router
+from .modules.imagenes.router import router as imagenes_router
 from .security import SECURITY_HEADERS, require_admin, require_api_key, verificar_configuracion
 from .store import get_store
 from .warehouse import WarehouseNoDisponible, get_warehouse
@@ -50,10 +52,26 @@ def _depurar_vencidas(store) -> bool:
     return True
 
 
+def _depurar_banners(store) -> None:
+    """Borra los banners subidos que ninguna campaña usa (después de 24 h): no quedan imágenes ocupando espacio."""
+    from .modules.imagenes import banners
+
+    banners.depurar(get_settings().data_dir / "imagenes", banners.usados_en(store.mensajes_guardados()))
+
+
 async def _planificador(store) -> None:
     """Cada 30 s publica las campañas programadas cuya hora llegó. Al arrancar también publica las que vencieron mientras
     el servidor estaba apagado. Nunca debe morir por un error puntual."""
+    ultima_limpieza = 0.0
     while True:
+        try:
+            if time.monotonic() - ultima_limpieza > 3600:      # una vez por hora
+                ultima_limpieza = time.monotonic()
+                await asyncio.to_thread(_depurar_banners, store)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Falló la limpieza de banners")
         try:
             # Antes de ejecutar, cada destinatario se vuelve a verificar contra el ERP. Si no se puede verificar (lista de
             # clientes sin cargar), la campaña ESPERA al siguiente ciclo: nunca se ejecuta sin esa verificación.
@@ -177,6 +195,7 @@ app.include_router(campanas_router, dependencies=[Depends(require_api_key)])
 app.include_router(clientes_router, dependencies=[Depends(require_api_key)])
 app.include_router(analitica_router, dependencies=[Depends(require_api_key)])
 app.include_router(automatizaciones_router, dependencies=[Depends(require_api_key)])
+app.include_router(imagenes_router)   # la lista exige clave; la foto (/media/productos/…) es pública: ver el módulo
 
 
 # --------------------------------------------------------------------------------- SPA (producción)
@@ -185,7 +204,7 @@ if DIST.exists():
 
     @app.get("/{ruta:path}", include_in_schema=False)
     async def spa(ruta: str):
-        if ruta.startswith("api/"):
+        if ruta.startswith(("api/", "media/")):
             raise HTTPException(404, "No encontrado.")
         archivo = (DIST / ruta).resolve()
         if ruta and archivo.is_file() and DIST.resolve() in archivo.parents:

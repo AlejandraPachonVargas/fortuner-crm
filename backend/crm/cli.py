@@ -81,6 +81,38 @@ def clientes_verificar(escritura: bool = typer.Option(False, help="Además crea,
     raise typer.Exit(1 if inf.fallas else 0)
 
 
+imagenes = typer.Typer(help="Fotos de producto: se importan desde la carpeta de fotos y se sirven optimizadas")
+app.add_typer(imagenes, name="imagenes")
+
+
+@imagenes.command("importar")
+def imagenes_importar(origen: str = typer.Option(..., help='Carpeta de fotos, p. ej. "D:/images_static". Solo se lee; nunca se modifica.')) -> None:
+    """Copia a data/imagenes SOLO las fotos que corresponden a un producto del catálogo (WebP 600 px + miniatura).
+    Se puede repetir: procesa lo nuevo y borra las fotos de productos que ya no existen. Requiere haber corrido `crm modelo`."""
+    import json
+    from pathlib import Path
+
+    from .modules.imagenes import importador
+    from .warehouse import get_warehouse
+
+    _log()
+    s = get_settings()
+    _, productos = get_warehouse().tuples("SELECT producto_id, ean FROM producto")
+    res = importador.importar(Path(origen), s.data_dir / "imagenes", productos)
+    typer.echo(json.dumps(res.resumen(), ensure_ascii=False, indent=2))
+
+
+@imagenes.command("estado")
+def imagenes_estado() -> None:
+    """Cuántos productos tienen foto y cuánto ocupan."""
+    from .modules.imagenes import importador
+
+    base = get_settings().data_dir / "imagenes"
+    man = importador.leer_manifiesto(base)
+    mb = sum(f.stat().st_size for f in base.rglob("*.webp")) / 1e6 if base.exists() else 0
+    typer.echo(f"Productos con foto: {len(man.get('productos', {}))} · {mb:.1f} MB en {base}")
+
+
 @app.command("servir")
 def servir(reload: bool = False) -> None:
     """Levanta la API (y la SPA si frontend/dist existe)."""

@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { Boxes, Calculator, CalendarDays, Check, Info, Plus, Search, Sparkles, TrendingDown, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import FotoProducto from '@/components/FotoProducto'
 import { Badge, Btn, Card, Empty, ErrorBox, Field, MultiSelect, Notice, SearchInput, Skeleton, Spinner } from '@/components/ui'
 import { api, useGet, type CalculoDescuento, type Filtros, type Producto, type Temporada } from '@/lib/api'
 import { fmtCop, fmtFecha, fmtNum } from '@/lib/format'
@@ -46,7 +47,8 @@ export default function PasoProductos({ value, onChange, temporadaId, onTemporad
             : (
               <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto scroll-thin">
                 {value.map((p) => (
-                  <li key={p.producto_id} className="flex items-start gap-2 px-5 py-2.5">
+                  <li key={p.producto_id} className="flex items-center gap-2.5 px-4 py-2">
+                    <FotoProducto id={p.producto_id} nombre={p.producto} size={36} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[12.5px] font-semibold text-ink" title={p.producto}>{p.producto}</div>
                       <div className="truncate text-[11.5px] text-ink-3">{p.marca} · {fmtCop(p.precio_venta)}</div>
@@ -74,6 +76,7 @@ function ProductoFila({ p, checked, onToggle, extra }: FilaProps) {
         className={clsx('mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition', checked ? 'border-brand bg-brand text-white' : 'border-line-strong bg-surface hover:border-brand')}>
         {checked && <Check size={13} strokeWidth={3.5} />}
       </button>
+      <button type="button" tabIndex={-1} aria-hidden onClick={onToggle} className="shrink-0"><FotoProducto id={p.producto_id} nombre={p.producto} size={64} /></button>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-[13px] font-semibold text-ink">{p.producto}</span><span className="text-[11.5px] text-ink-3">{p.marca}</span>
           {p.activo === false && <Badge tone="warn" title="El ERP lo tiene marcado como inactivo. Verifique que se siga vendiendo antes de promocionarlo.">Inactivo en el ERP</Badge>}</div>

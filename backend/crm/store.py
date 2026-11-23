@@ -267,6 +267,12 @@ class Store:
         self.auditar("cancelar_programacion", cid, "", origen)
         return self.obtener(cid)
 
+    def mensajes_guardados(self) -> list[str]:
+        """El JSON del mensaje de todas las campañas (incluidas las eliminadas: se pueden consultar). Sirve para saber
+        qué banners siguen en uso."""
+        with self._lock:
+            return [r[0] for r in self._db.execute("SELECT mensaje FROM campana").fetchall()]
+
     def huella(self) -> str:
         """Cambia cada vez que cambia una campaña, sus destinatarios o una automatización (clave de caché de la analítica)."""
         with self._lock:

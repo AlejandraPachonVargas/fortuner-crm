@@ -191,7 +191,8 @@ def test_ejecucion_real_no_duplica_y_marca_el_dia(entorno):
     assert r1["enviados"] == 5 and r2["enviados"] == 0 and r2["excluidos"]["ya_recibio"] == 5
     assert alm.exigir(a["id"])["ultima_ref"] == HOY.isoformat()
     assert len(alm.ejecuciones(a["id"])) == 2
-    assert {"1", "2", "4", "5", "6"} <= store.contactados_recientes(3)
+    # La ventana se cuenta desde hoy (reloj real) y HOY es una fecha fija: se amplía para que la prueba no dependa del día.
+    assert {"1", "2", "4", "5", "6"} <= store.contactados_recientes((date.today() - HOY).days + 3)
     fila = alm.por_automatizacion(None, None)[0]                                       # para la Analítica de campañas
     assert (fila["envios"], fila["personas"], fila["costo"]) == (5, 5, 4 * (120 + 3) + 120)   # Beto no tiene correo
 

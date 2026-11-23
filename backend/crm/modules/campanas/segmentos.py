@@ -14,7 +14,9 @@ Combina varias técnicas (no solo las básicas), todas calculadas sobre el histo
 8. **Contactabilidad y consentimiento**: celular válido para WhatsApp/SMS, correo válido, autorización de datos
    (Ley 1581), exclusión de quien ya recibió una campaña reciente, y exclusión de menores si hay licor/cigarrillos.
 9. **Puntaje de propensión (0-100)** = combinación ponderada y explicable de lo anterior, con pesos según el objetivo.
-10. **Curva de concentración (Pareto)**: muestra cuánto del «potencial» se captura con cada porcentaje de la audiencia,
+10. **Captación**: excluir a quienes ya compran los productos (todos o solo los habituales: N compras en D días) y
+    puntuar a los demás por su parecido con los compradores (categoría, marca, valor), sin premiar la compra previa.
+11. **Curva de concentración (Pareto)**: muestra cuánto del «potencial» se captura con cada porcentaje de la audiencia,
     para decidir el corte óptimo según el costo por mensaje y no gastar en quien casi no responderá.
 
 Honestidad metodológica: el puntaje es un modelo heurístico explicable. Cuando se registren respuestas reales
@@ -45,7 +47,12 @@ CLUBS = {"vino": "club_vino", "salud": "club_salud", "mascotas": "club_mascotas"
 OBJETIVOS = {
     "equilibrado": "Equilibrado", "rotar_inventario": "Rotar inventario (promoción)",
     "premium": "Clientes de alto valor", "reactivar": "Reactivar clientes dormidos",
+    "captar": "Captar nuevos compradores",
 }
+# Exclusión de quienes ya compran los productos elegidos (captación).
+EXCLUIR_COMPRADORES = {"no": "No excluir", "habituales": "Compradores habituales", "todos": "Todos los que ya los compraron"}
+HABITUAL_COMPRAS = (2, 3, 4, 6)     # «habitual» = al menos N compras (facturas distintas) con estos productos…
+HABITUAL_DIAS = (90, 180, 365)      # …en los últimos D días antes del corte de datos
 COSTOS_DEFECTO = {"whatsapp": 120.0, "sms": 45.0, "email": 3.0}   # COP por mensaje: SUPUESTO editable, validar con el proveedor
 CANALES = tuple(COSTOS_DEFECTO)
 
@@ -55,6 +62,9 @@ _PESOS = {
     "rotar_inventario": dict(af=.30, mo=.15, va=.05, re=.15, es=.10, de=.25),
     "premium":          dict(af=.35, mo=.15, va=.30, re=.10, es=.10, de=0.0),
     "reactivar":        dict(af=.30, mo=.40, va=.15, re=.05, es=.10, de=0.0),
+    # Captar: la afinidad NO cuenta «ya compró este producto» (son justamente los que se excluyen); cuenta el parecido
+    # (gasta en la categoría, prefiere la marca). Se premia algo más el valor y la recencia: clientes activos de la tienda.
+    "captar":           dict(af=.45, mo=.10, va=.20, re=.15, es=.10, de=0.0),
 }
 # Qué tan «a tiempo» está un cliente según su ciclo. En «reactivar» se invierte: interesan los atrasados.
 _MOMENTO = {
@@ -114,6 +124,14 @@ def _validos(v, permitidos) -> list[str]:
     return [str(x) for x in _lista(v) if str(x) in permitidos]
 
 
+def _uno_de(v, permitidos: tuple[int, ...], defecto: int) -> int:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return defecto
+    return n if n in permitidos else defecto
+
+
 def normalizar(f: dict) -> dict:
     """Limpia y valida los filtros (todo lo desconocido se descarta)."""
     f = f or {}
@@ -159,6 +177,9 @@ def normalizar(f: dict) -> dict:
         "consentimiento": "incluir_sin_registro" if f.get("consentimiento") == "incluir_sin_registro" else "estricto",
         "excluir_contactados_dias": max(0, min(int(f.get("excluir_contactados_dias") or 0), 365)) if str(f.get("excluir_contactados_dias") or "0").isdigit() else 0,
         "objetivo": objetivo,
+        "excluir_compradores": f.get("excluir_compradores") if f.get("excluir_compradores") in EXCLUIR_COMPRADORES else "no",
+        "habitual_compras": _uno_de(f.get("habitual_compras"), HABITUAL_COMPRAS, 3),
+        "habitual_dias": _uno_de(f.get("habitual_dias"), HABITUAL_DIAS, 180),
         "tope_contactos": tope,
         "costos": costos,
     }
@@ -176,6 +197,7 @@ def _consulta(f: dict, restringido: bool, excluidos: list[str]) -> tuple[str, li
     momento = _MOMENTO["reactivar" if f["objetivo"] == "reactivar" else "normal"]
     mom_sql = "CASE estado_ciclo " + " ".join(f"WHEN '{k}' THEN {v}" for k, v in momento.items()) + " ELSE 0.4 END"
     usa_est = bool(f["meses_temporada"])
+    peso_prod = 0.0 if f["objetivo"] == "captar" else 0.9   # en captación «ya lo compró» no suma afinidad
     w = dict(pesos)
     if not usa_est:                      # sin temporada, su peso se reparte en afinidad
         w["af"] += w["es"]
@@ -190,8 +212,18 @@ def _consulta(f: dict, restringido: bool, excluidos: list[str]) -> tuple[str, li
         "AND codigo IN (SELECT grupo_id FROM sel) GROUP BY 1)",
         "aff_f AS (SELECT cliente_id, SUM(venta) AS v FROM cli_nivel WHERE nivel = 'familia' "
         "AND codigo IN (SELECT familia_id FROM sel) GROUP BY 1)",
-        "aff_m AS (SELECT cliente_id, SUM(venta) AS v FROM cli_marca WHERE marca IN (SELECT marca FROM sel) GROUP BY 1)",
+        # «SIN MARCA» no es una marca: la tienen miles de productos (p. ej. todos los aguardientes) y volvía afines a casi todos.
+        "aff_m AS (SELECT cliente_id, SUM(venta) AS v FROM cli_marca WHERE marca IN (SELECT marca FROM sel) "
+        "AND upper(trim(marca)) NOT IN ('SIN MARCA', '') GROUP BY 1)",
     ]
+    # Compras de los productos elegidos en la ventana reciente (para excluir a quienes ya los compran).
+    if f["excluir_compradores"] == "habituales":
+        ctes.append("hab AS (SELECT cliente_id, COUNT(DISTINCT factura) AS compras_ventana FROM venta "
+                    "WHERE list_contains(?::VARCHAR[], producto_id) AND cliente_id IS NOT NULL AND cantidad > 0 "
+                    "AND fecha > (SELECT corte FROM meta) - to_days(?::INTEGER) GROUP BY 1)")
+        params += [ids, f["habitual_dias"]]
+    else:
+        ctes.append("hab AS (SELECT NULL::VARCHAR AS cliente_id, 0::BIGINT AS compras_ventana WHERE FALSE)")
     if usa_est:
         ctes.append("est AS (SELECT cliente_id, SUM(visitas) AS v FROM cli_mes WHERE list_contains(?::INTEGER[], mes) GROUP BY 1)")
         params.append(f["meses_temporada"])
@@ -209,7 +241,7 @@ def _consulta(f: dict, restringido: bool, excluidos: list[str]) -> tuple[str, li
              COALESCE(ag.v, 0) / NULLIF(p.venta_total, 0) AS share_g,
              COALESCE(af.v, 0) / NULLIF(p.venta_total, 0) AS share_f,
              COALESCE(am.v, 0) / NULLIF(p.venta_total, 0) AS share_m,
-             COALESCE(e.v, 0) AS visitas_temporada
+             COALESCE(e.v, 0) AS visitas_temporada, COALESCE(h.compras_ventana, 0) AS compras_ventana
       FROM cliente c
       JOIN cli_rfm rf USING (cliente_id)
       JOIN cli_perfil p USING (cliente_id)
@@ -218,6 +250,7 @@ def _consulta(f: dict, restringido: bool, excluidos: list[str]) -> tuple[str, li
       LEFT JOIN aff_f af USING (cliente_id)
       LEFT JOIN aff_m am USING (cliente_id)
       LEFT JOIN est e USING (cliente_id)
+      LEFT JOIN hab h USING (cliente_id)
       WHERE NOT c.bloqueado
     ),
     punt AS (
@@ -229,7 +262,7 @@ def _consulta(f: dict, restringido: bool, excluidos: list[str]) -> tuple[str, li
     ),
     fin AS (
       SELECT *,
-        100 * (1 - (1 - 0.9 * a_prod) * (1 - 0.8 * a_cat) * (1 - 0.5 * a_marca)) AS afinidad,
+        100 * (1 - (1 - {peso_prod} * a_prod) * (1 - 0.8 * a_cat) * (1 - 0.5 * a_marca)) AS afinidad,
         {mom_sql} AS s_momento,
         ((0.6 * m + 0.4 * f) - 1) / 4.0 AS s_valor,
         (r - 1) / 4.0 AS s_rec,
@@ -304,7 +337,7 @@ def _consulta(f: dict, restringido: bool, excluidos: list[str]) -> tuple[str, li
     sql = ("WITH " + ",\n".join(ctes) + ",\n" + base +
            "SELECT cliente_id, nombre, email, celular, email_valido, sexo, banda_edad, ciudad, segmento_rfm, estado_ciclo, "
            "dias_sin_compra, visitas, venta_total, ticket_prom, compras_prod, ultima_prod, share_g, share_m, afinidad, puntaje, "
-           "dia_semana_pref, franja_pref, sens_desc, m "
+           "dia_semana_pref, franja_pref, sens_desc, m, compras_ventana "
            "FROM score WHERE " + " AND ".join(where) + " ORDER BY puntaje DESC, cliente_id")
     return sql, params
 
@@ -316,6 +349,17 @@ def calcular(wh: Warehouse, filtros: dict, restringido: bool = False, excluidos:
         raise ValueError("Seleccione al menos un producto antes de segmentar.")
     sql, params = _consulta(f, restringido, sorted(excluidos or []))
     cols, rows = wh.tuples(sql, params)
+    # Captación: fuera quienes ya compran los productos. Se filtra aquí (y no en el SQL) para poder decir cuántos salieron.
+    f["_excluidos_compradores"] = 0
+    if f["excluir_compradores"] != "no":
+        antes = len(rows)
+        if f["excluir_compradores"] == "todos":      # alguna vez (todo el historial cargado)
+            i = cols.index("compras_prod")
+            rows = [r for r in rows if not r[i]]
+        else:                                        # habituales: N o más compras en los últimos D días
+            i, minimo = cols.index("compras_ventana"), f["habitual_compras"]
+            rows = [r for r in rows if (r[i] or 0) < minimo]
+        f["_excluidos_compradores"] = antes - len(rows)
     f["_cols"] = cols
     return f, rows
 
@@ -397,6 +441,8 @@ def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dic
     por_canal = Counter()
     seg, sexo, edad, ciclo, ciud = Counter(), Counter(), Counter(), Counter(), Counter()
     dias, franjas = Counter(), Counter()
+    relacion = Counter()   # qué tan «nuevos» son para estos productos
+    i_cp = ci.get("compras_prod")
     costo = 0.0
     puntajes = []
     i_dia, i_fr = ci.get("dia_semana_pref"), ci.get("franja_pref")
@@ -420,6 +466,9 @@ def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dic
         ciclo[r[ci["estado_ciclo"]]] += 1
         ciud[(r[ci["ciudad"]] or "SIN CIUDAD").upper()] += 1
         puntajes.append(r[ci["puntaje"]])
+        if i_cp is not None:
+            n = r[i_cp] or 0
+            relacion["nunca" if n == 0 else "una" if n == 1 else "varias"] += 1
 
     # Curva de concentración sobre TODA la audiencia candidata (antes del tope) para recomendar el corte.
     # «Potencial relativo» = (puntaje/100)^3: la respuesta real se concentra en los mejores candidatos (típicamente el
@@ -445,6 +494,7 @@ def resumen(cols: list[str], rows: list[tuple], f: dict, total_base: int) -> dic
         "ciclo": [{"id": k, "nombre": CICLOS.get(k, k), "n": v} for k, v in ciclo.most_common()],
         "ciudades": [{"id": k, "n": v} for k, v in ciud.most_common(8)],
         "momento": momento_de_compra(dias, franjas),
+        "relacion_productos": [{"id": k, "n": relacion.get(k, 0)} for k in ("nunca", "una", "varias") if relacion.get(k)],
         "curva": curva,
         "corte_recomendado": ({"contactos": corte["contactos"], "pct_audiencia": corte["pct_audiencia"],
                                "pct_potencial": corte["pct_potencial"], "puntaje_minimo": corte["puntaje_corte"]} if corte else None),

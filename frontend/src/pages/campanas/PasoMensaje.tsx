@@ -1,9 +1,9 @@
 import clsx from 'clsx'
-import { Check, Mail, MessageCircle, MessageSquareText, PenLine, PenSquare, Settings2, Sparkles, Wand2 } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Check, ImagePlus, Mail, MessageCircle, MessageSquareText, PenLine, PenSquare, RotateCcw, Settings2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Badge, Btn, Card, ErrorBox, Notice } from '@/components/ui'
 import VistaCanales from '@/components/VistaCanales'
-import { api, type Mensaje, type Producto, type Textos } from '@/lib/api'
+import { api, subirBanner, urlBanner, type Mensaje, type Producto, type Textos } from '@/lib/api'
 import { fmtNum } from '@/lib/format'
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   /** Automatizaciones: sin redacción con IA (no conoce {oferta}), con marcadores propios y la vista previa resuelta. */
   sinIa?: boolean; marcadores?: ReactNode; oferta?: string; vigencia?: string | null
 }
+// (Automatizaciones todavía no guarda banner ni fotos ocultas en sus ediciones: ahí no se muestra la carga.)
 
 interface Validacion {
   whatsapp?: { caracteres: number; ok: boolean; avisos: string[] }
@@ -27,6 +28,54 @@ const CANALES = [
 ] as const
 
 const TONOS = ['Cercano y cálido', 'Urgente', 'Elegante y premium', 'Festivo y alegre', 'Familiar', 'Directo y breve']
+
+const MAX_MB = 8
+const TIPOS = ['image/jpeg', 'image/png', 'image/webp']
+
+/** «Imagen del mensaje»: el banner del publicista para WhatsApp y el correo (se ve al instante en la vista previa). */
+function CargarBanner({ mensaje, set, productos }: { mensaje: Mensaje; set: (p: Partial<Mensaje>) => void; productos: Producto[] }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<unknown>(null)
+  const ocultas = (mensaje.fotos_ocultas ?? []).filter((id) => productos.some((p) => p.producto_id === id)).length
+  const elegir = async (f: File | undefined) => {
+    if (!f) return
+    setErr(null)
+    if (!TIPOS.includes(f.type)) { setErr(new Error('Formato no admitido: use JPG, PNG o WebP.')); return }
+    if (f.size > MAX_MB * 1024 * 1024) { setErr(new Error(`La imagen pesa más de ${MAX_MB} MB. Exporte una versión más liviana.`)); return }
+    setBusy(true)
+    try { set({ banner: await subirBanner(f) }) } catch (e) { setErr(e) } finally { setBusy(false); if (input.current) input.current.value = '' }
+  }
+  const b = mensaje.banner
+  return (
+    <div className="rounded-2xl border border-dashed border-line-strong p-3.5">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+        <span className="text-[12.5px] font-bold text-ink-2">Imagen del mensaje</span>
+        <span className="text-[11.5px] text-ink-3">WhatsApp y correo · JPG, PNG o WebP hasta {MAX_MB} MB · ideal horizontal (1200 × 628 px)</span>
+      </div>
+      <input ref={input} type="file" accept={TIPOS.join(',')} className="hidden" onChange={(e) => void elegir(e.target.files?.[0])} />
+      {b ? (
+        <div className="flex items-center gap-3">
+          <img src={urlBanner(b.id)} alt="Banner cargado" className="h-16 w-28 shrink-0 rounded-lg border border-line bg-surface-2 object-contain" />
+          <div className="min-w-0 flex-1 text-[12px] text-ink-2">
+            <div className="truncate font-semibold text-ink" title={b.nombre}>{b.nombre || 'Banner'}</div>
+            {b.ancho && b.alto && <div className="text-ink-3 tnum">{b.ancho} × {b.alto} px</div>}
+          </div>
+          <Btn small variant="ghost" icon={<ImagePlus size={14} />} busy={busy} onClick={() => input.current?.click()}>Cambiar</Btn>
+          <Btn small variant="ghost" icon={<Trash2 size={14} />} onClick={() => set({ banner: null })}>Quitar</Btn>
+        </div>
+      ) : (
+        <Btn variant="secondary" icon={<ImagePlus size={15} />} busy={busy} onClick={() => input.current?.click()}>Cargar imagen</Btn>
+      )}
+      <p className="mt-2 text-[11.5px] text-ink-3">
+        {b ? 'Va arriba del mensaje en lugar de la foto del producto. ' : 'Sin imagen se usan las fotos de los productos. '}
+        Con la <b>(x)</b> de la vista previa puede quitar cualquier foto.
+        {ocultas > 0 && <> {' '}<button type="button" onClick={() => set({ fotos_ocultas: [] })} className="inline-flex items-center gap-1 font-semibold text-brand hover:underline"><RotateCcw size={12} />Mostrar de nuevo {ocultas === 1 ? 'la foto oculta' : `las ${ocultas} fotos ocultas`}</button></>}
+      </p>
+      {err != null && <div className="mt-2"><ErrorBox error={err} /></div>}
+    </div>
+  )
+}
 
 const area = 'w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-3 focus:border-brand focus:ring-2 focus:ring-brand/15'
 
@@ -186,6 +235,7 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId,
                 {activo === 'sms' && val.sms && <Badge tone={val.sms.ok ? 'good' : 'warn'}>{val.sms.codificacion} · {val.sms.ok ? '1 SMS por cliente' : `${val.sms.mensajes} SMS por cliente`}</Badge>}
               </div>
               {avisos.map((a) => <Notice key={a} tone="warn">{a}</Notice>)}
+              {!sinIa && (mensaje.canales.includes('whatsapp') || mensaje.canales.includes('email')) && <CargarBanner mensaje={mensaje} set={set} productos={productos} />}
               {ia && !tiene && <Notice tone="info">Escribe tu indicación y pulsa <b>Generar mensajes</b>: aquí podrás revisar y editar cada versión.</Notice>}
             </div>
           )}
@@ -194,7 +244,9 @@ export default function PasoMensaje({ mensaje, onChange, productos, temporadaId,
 
       <div className="min-w-0 xl:sticky xl:top-0 xl:max-h-[calc(100vh-8rem)] xl:overflow-y-auto xl:pr-1 scroll-thin">
         <Card title="Así lo verá el cliente" subtitle="Se actualiza mientras escribes">
-          <VistaCanales mensaje={vista} productos={productos} vigencia={vigencia} canal={activo} onCanal={(c) => setCanal(c as Canal)} />
+          <VistaCanales mensaje={vista} productos={productos} vigencia={vigencia} canal={activo} onCanal={(c) => setCanal(c as Canal)}
+            onQuitarBanner={sinIa ? undefined : () => set({ banner: null })}
+            onOcultarFoto={sinIa ? undefined : (id) => set({ fotos_ocultas: [...new Set([...(mensaje.fotos_ocultas ?? []), id])] })} />
         </Card>
       </div>
     </div>

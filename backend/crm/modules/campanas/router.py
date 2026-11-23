@@ -14,6 +14,7 @@ from ...config import get_settings
 from ...security import limitar_ia
 from ...store import get_store
 from ...warehouse import get_warehouse
+from ..imagenes.banners import banner_de
 from . import calendario, productos as prod, programacion, redaccion, segmentos as seg
 
 log = logging.getLogger("crm.campanas")
@@ -30,6 +31,26 @@ def _wh():
 
 # ------------------------------------------------------------------------------------------ esquemas
 _CLAVES_PRODUCTO = ("producto_id", "producto", "marca", "precio_venta", "familia", "grupo", "razon", "stock_actual")
+
+
+def _mensaje_limpio(v: dict | None) -> dict | None:
+    """Tamaño máximo y banner válido (solo {id, ancho, alto, nombre}); las fotos ocultas, solo como lista de códigos."""
+    if v is None:
+        return None
+    if len(json.dumps(v, ensure_ascii=False)) > 60_000:
+        raise ValueError("Contenido demasiado grande")
+    v = dict(v)
+    b = banner_de(v)
+    if b:
+        v["banner"] = b
+    else:
+        v.pop("banner", None)
+    oc = v.get("fotos_ocultas")
+    if oc is not None:
+        if not isinstance(oc, list):
+            raise ValueError("fotos_ocultas debe ser una lista")
+        v["fotos_ocultas"] = [str(x)[:20] for x in oc if str(x).isdigit()][:500]
+    return v
 
 
 def _producto_limpio(p: dict) -> dict:
@@ -66,7 +87,12 @@ class CampanaIn(BaseModel):
     def _prods(cls, v: list[dict]) -> list[dict]:
         return [_producto_limpio(p) for p in v]
 
-    @field_validator("mensaje", "segmentacion")
+    @field_validator("mensaje")
+    @classmethod
+    def _msj(cls, v: dict) -> dict:
+        return _mensaje_limpio(v)
+
+    @field_validator("segmentacion")
     @classmethod
     def _tam(cls, v: dict) -> dict:
         if len(json.dumps(v, ensure_ascii=False)) > 60_000:
@@ -89,7 +115,12 @@ class CampanaPatch(BaseModel):
     def _prods(cls, v):
         return None if v is None else [_producto_limpio(p) for p in v]
 
-    @field_validator("mensaje", "segmentacion")
+    @field_validator("mensaje")
+    @classmethod
+    def _msj(cls, v):
+        return _mensaje_limpio(v)
+
+    @field_validator("segmentacion")
     @classmethod
     def _tam(cls, v):
         if v is not None and len(json.dumps(v, ensure_ascii=False)) > 60_000:
@@ -224,6 +255,8 @@ async def validar_redaccion(b: ValidarTextos):
 async def opciones_segmentacion():
     return {"segmentos_rfm": seg.SEGMENTOS_RFM, "ciclo": seg.CICLOS, "edades": list(seg.BANDAS_EDAD),
             "clubs": list(seg.CLUBS), "objetivos": seg.OBJETIVOS, "costos": seg.COSTOS_DEFECTO,
+            "excluir_compradores": seg.EXCLUIR_COMPRADORES, "habitual_compras": list(seg.HABITUAL_COMPRAS),
+            "habitual_dias": list(seg.HABITUAL_DIAS),
             "canales": list(seg.CANALES)}
 
 
@@ -294,8 +327,9 @@ def calcular_audiencia(filtros: dict, restringidos: list[str], excluidos: set[st
     r = restricciones_erp()
     f, rows = seg.calcular(_wh(), filtros, restringido=bool(restringidos), excluidos=excluidos)
     cols = f.pop("_cols")
+    compradores = f.pop("_excluidos_compradores", 0)
     cols, rows, info = seg.aplicar_restricciones(cols, rows, f, r, bool(restringidos))
-    return f, cols, rows, info
+    return f, cols, rows, {**info, "excluidos_compradores": compradores}
 
 
 @router.post("/segmentacion/previsualizar")

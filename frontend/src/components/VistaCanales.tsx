@@ -1,7 +1,8 @@
 import clsx from 'clsx'
-import { ArrowLeft, Camera, ChevronLeft, Mail, MessageCircle, MessageSquareText, Mic, MoreVertical, Phone, Plus, Video } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronLeft, Mail, MessageCircle, MessageSquareText, Mic, MoreVertical, Phone, Plus, Video, X } from 'lucide-react'
 import { createContext, Fragment, useContext, useId, useMemo, useState, type ReactNode } from 'react'
-import type { Mensaje, Producto } from '@/lib/api'
+import FotoProducto, { urlFoto, useFotos } from '@/components/FotoProducto'
+import { urlBanner, type Mensaje, type Producto } from '@/lib/api'
 import { CANAL_LABEL, fmtCop } from '@/lib/format'
 
 /**
@@ -26,17 +27,30 @@ function formatoWA(texto: string): ReactNode[] {
   })
 }
 
+/** (x) en la esquina de una imagen de la vista previa: la quita del mensaje (solo mientras se edita). */
+function Quitar({ onClick, que }: { onClick?: () => void; que: string }) {
+  if (!onClick) return null
+  return (
+    <button type="button" onClick={onClick} aria-label={`Quitar ${que}`} title={`Quitar ${que}`}
+      className="absolute top-1.5 right-1.5 z-10 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white shadow-md ring-2 ring-white/80 transition hover:bg-[#d93025]">
+      <X size={15} strokeWidth={2.75} />
+    </button>
+  )
+}
+
+interface Imagen { src: string; alt: string; que: string; quitar?: () => void }
+
 function Telefono({ children, etiqueta }: { children: ReactNode; etiqueta: string }) {
   // Tarjeta limpia, sin marco de celular: sombra suave y bordes redondeados.
   return (
-    <div role="img" aria-label={etiqueta} className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl bg-white shadow-[0_20px_50px_-14px_rgba(11,29,54,0.30)] ring-1 ring-black/5">
+    <div role="group" aria-label={etiqueta} className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl bg-white shadow-[0_20px_50px_-14px_rgba(11,29,54,0.30)] ring-1 ring-black/5">
       {children}
     </div>
   )
 }
 
 // ----------------------------------------------------------------------------------------------- WhatsApp
-function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
+function WhatsAppVista({ texto, nombre, imagen }: { texto: string; nombre: string; imagen?: Imagen | null }) {
   const vig = useContext(VigenciaCtx)
   return (
     <Telefono etiqueta="Así se vería el mensaje en WhatsApp">
@@ -52,6 +66,13 @@ function WhatsAppVista({ texto, nombre }: { texto: string; nombre: string }) {
         <div className="mx-auto mb-2.5 w-fit rounded-md bg-[#fff5c4] px-2 py-0.5 text-[10px] text-[#54656f] shadow-sm">HOY</div>
         {texto ? (
           <div className="relative max-w-[88%] rounded-lg rounded-tl-none bg-white px-2.5 pt-1.5 pb-4 text-[12.5px] leading-[1.35] whitespace-pre-wrap text-[#111b21] shadow-sm">
+            {/* WhatsApp admite UNA imagen arriba del texto: el banner, o si no hay, la foto del primer producto. */}
+            {imagen && (
+              <div className="relative -mx-1.5 mb-1.5 overflow-hidden rounded-md bg-[#f0f2f5]">
+                <img src={imagen.src} alt={imagen.alt} className="max-h-64 w-full object-contain" />
+                <Quitar onClick={imagen.quitar} que={imagen.que} />
+              </div>
+            )}
             {formatoWA(personalizar(texto, nombre, vig))}
             <span className="absolute right-2 bottom-1 text-[9.5px] text-[#667781]">{hora()}</span>
           </div>
@@ -90,13 +111,15 @@ function SmsVista({ texto, nombre }: { texto: string; nombre: string }) {
 }
 
 // ----------------------------------------------------------------------------------------------- correo
-function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto: string; preheader: string; cuerpo: string; nombre: string; productos: Producto[] }) {
+interface CorreoProps { asunto: string; preheader: string; cuerpo: string; nombre: string; productos: Producto[]; banner?: Imagen | null; onOcultar?: (id: string) => void }
+
+function CorreoVista({ asunto, preheader, cuerpo, nombre, productos, banner, onOcultar }: CorreoProps) {
   const vig = useContext(VigenciaCtx)
   const parrafos = personalizar(cuerpo, nombre, vig).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
   const vista = personalizar(preheader, nombre, vig) || (parrafos[0] ?? '').slice(0, 90)
   const dest = productos.slice(0, 4)
   return (
-    <div role="img" aria-label="Así se vería el correo" className="mx-auto w-full max-w-[520px] overflow-hidden rounded-xl border border-[#dadce0] bg-[#f6f8fc] text-[#202124] shadow-lg">
+    <div role="group" aria-label="Así se vería el correo" className="mx-auto w-full max-w-[520px] overflow-hidden rounded-xl border border-[#dadce0] bg-[#f6f8fc] text-[#202124] shadow-lg">
       <div className="flex items-center gap-2 border-b border-[#dadce0] bg-white px-3 py-1.5 text-[11px] text-[#5f6368]" aria-hidden>
         <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
         <span className="ml-2">Bandeja de entrada</span>
@@ -119,13 +142,21 @@ function CorreoVista({ asunto, preheader, cuerpo, nombre, productos }: { asunto:
         </div>
         <div className="mt-3 overflow-hidden rounded-lg border border-[#e8eaed]">
           <div className="bg-[#003760] px-4 py-3.5 text-center"><span className="text-[17px] font-extrabold tracking-[0.25em] text-white">{EMPRESA.toUpperCase()}</span></div>
+          {banner && (
+            <div className="relative bg-[#f8f9fa]">
+              <img src={banner.src} alt={banner.alt} className="block w-full" />
+              <Quitar onClick={banner.quitar} que={banner.que} />
+            </div>
+          )}
           <div className="space-y-2.5 px-4 py-4 text-[12.5px] leading-relaxed text-[#3c4043]">
             {parrafos.length ? parrafos.map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>) : <p className="text-[#80868b]">Aquí aparecerá el cuerpo del correo.</p>}
           </div>
           {dest.length > 0 && parrafos.length > 0 && (
             <div className="grid grid-cols-2 gap-2 px-4 pb-4">
               {dest.map((p) => (
-                <div key={p.producto_id} className="rounded-lg border border-[#e8eaed] bg-[#f8f9fa] p-2.5">
+                <div key={p.producto_id} className="relative rounded-lg border border-[#e8eaed] bg-[#f8f9fa] p-2.5">
+                  <Quitar onClick={onOcultar && (() => onOcultar(p.producto_id))} que={`la foto de ${p.producto}`} />
+                  <FotoProducto id={p.producto_id} nombre={p.producto} size={120} grande className="mx-auto mb-2 border-0" />
                   <div className="line-clamp-2 min-h-[2.1em] text-[11.5px] leading-snug font-semibold text-[#202124]">{p.producto}</div>
                   <div className="mt-1 text-[10.5px] text-[#5f6368]">{p.marca}</div>
                   {p.precio_venta > 0 && <div className="mt-1 text-[13px] font-extrabold text-[#0F70FC]">{fmtCop(p.precio_venta)}</div>}
@@ -151,9 +182,13 @@ export default function VistaCanales({ vigencia, ...props }: Props & { vigencia?
   return <VigenciaCtx.Provider value={vigencia || base}><Vista {...props} /></VigenciaCtx.Provider>
 }
 
-type Props = { mensaje: Partial<Mensaje>; productos: Producto[]; className?: string; canal?: string; onCanal?: (c: string) => void; sinPestanas?: boolean; todos?: boolean }
+type Props = {
+  mensaje: Partial<Mensaje>; productos: Producto[]; className?: string; canal?: string; onCanal?: (c: string) => void; sinPestanas?: boolean; todos?: boolean
+  /** Solo al editar: la (x) de las imágenes quita el banner u oculta la foto de un producto. */
+  onQuitarBanner?: () => void; onOcultarFoto?: (id: string) => void
+}
 
-function Vista({ mensaje, productos, className, canal, onCanal, sinPestanas, todos }: Props) {
+function Vista({ mensaje, productos, className, canal, onCanal, sinPestanas, todos, onQuitarBanner, onOcultarFoto }: Props) {
   const canales = (mensaje.canales ?? []).filter((c): c is 'whatsapp' | 'sms' | 'email' => c in ICONO)
   const [sel, setSel] = useState<string>('')
   const [nombre, setNombre] = useState('María')
@@ -162,6 +197,15 @@ function Vista({ mensaje, productos, className, canal, onCanal, sinPestanas, tod
   const activo = canales.includes(elegido as never) ? elegido : canales[0]
   const t = mensaje.textos ?? {}
   const nombreOk = useMemo(() => nombre.trim().slice(0, 30) || 'María', [nombre])
+  const fotos = useFotos()
+  const ocultas = useMemo(() => new Set(mensaje.fotos_ocultas ?? []), [mensaje.fotos_ocultas])
+  const visibles = useMemo(() => productos.filter((p) => !ocultas.has(p.producto_id)), [productos, ocultas])
+  const banner: Imagen | null = mensaje.banner?.id
+    ? { src: urlBanner(mensaje.banner.id), alt: 'Banner de la campaña', que: 'el banner', quitar: onQuitarBanner } : null
+  const primera = visibles.find((p) => fotos.ids.has(p.producto_id))
+  const imagenWA: Imagen | null = banner ?? (primera
+    ? { src: urlFoto(primera.producto_id, fotos.version), alt: primera.producto, que: `la foto de ${primera.producto}`, quitar: onOcultarFoto && (() => onOcultarFoto(primera.producto_id)) }
+    : null)
 
   if (!canales.length) return <p className="text-[13px] text-ink-3">Elija al menos un canal para ver la vista previa.</p>
   return (
@@ -185,16 +229,16 @@ function Vista({ mensaje, productos, className, canal, onCanal, sinPestanas, tod
             {canales.map((c) => (
               <div key={c} className="min-w-0">
                 <div className="mb-3 flex items-center justify-center gap-1.5 text-[12px] font-bold tracking-wide text-ink-2 uppercase">{(() => { const I = ICONO[c]; return <I size={14} /> })()}{CANAL_LABEL[c]}</div>
-                {c === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} />}
+                {c === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} imagen={imagenWA} />}
                 {c === 'sms' && <SmsVista texto={t.sms?.texto ?? ''} nombre={nombreOk} />}
-                {c === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={productos} />}
+                {c === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={visibles} banner={banner} onOcultar={onOcultarFoto} />}
               </div>
             ))}
           </div>
         ) : null}
-        {!todos && activo === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} />}
+        {!todos && activo === 'whatsapp' && <WhatsAppVista texto={t.whatsapp?.texto ?? ''} nombre={nombreOk} imagen={imagenWA} />}
         {!todos && activo === 'sms' && <SmsVista texto={t.sms?.texto ?? ''} nombre={nombreOk} />}
-        {!todos && activo === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={productos} />}
+        {!todos && activo === 'email' && <CorreoVista asunto={t.email?.asunto ?? ''} preheader={t.email?.preheader ?? ''} cuerpo={t.email?.cuerpo ?? ''} nombre={nombreOk} productos={visibles} banner={banner} onOcultar={onOcultarFoto} />}
       </div>
       <p className="mt-2 text-[11px] text-ink-3">Aproximación de cómo lo verá el cliente: cada aplicación (y cada celular) puede variar un poco el diseño.</p>
     </div>

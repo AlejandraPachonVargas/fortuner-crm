@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { ArrowLeft, CheckCircle2, CircleAlert, Gift, Save, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import FotoProducto from '@/components/FotoProducto'
 import { Btn, Card, ErrorBox, Notice, Skeleton, inputCls } from '@/components/ui'
 import { api, type Mensaje, type Producto, type Textos } from '@/lib/api'
 import { puntajeCalidad, revisarCalidad } from '@/lib/calidad'
@@ -197,7 +198,7 @@ function ProductosOferta({ valor, onChange }: { valor: Producto[]; onChange: (p:
                 <button type="button" disabled={valor.length >= 20 || valor.some((x) => x.producto_id === p.producto_id)}
                   onClick={() => { onChange([...valor, p]); setQ('') }}
                   className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-[12.5px] hover:bg-surface-hover disabled:opacity-50">
-                  <span className="truncate">{p.producto}</span><span className="shrink-0 text-ink-3 tnum">{fmtCop(p.precio_venta)}</span>
+                  <FotoProducto id={p.producto_id} nombre={p.producto} size={32} /><span className="min-w-0 flex-1 truncate">{p.producto}</span><span className="shrink-0 text-ink-3 tnum">{fmtCop(p.precio_venta)}</span>
                 </button>
               </li>
             ))}
@@ -208,8 +209,8 @@ function ProductosOferta({ valor, onChange }: { valor: Producto[]; onChange: (p:
       {valor.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {valor.map((p) => (
-            <span key={p.producto_id} className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 py-1 pr-1 pl-2.5 text-[12px] text-ink-2">
-              {p.producto}
+            <span key={p.producto_id} className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 py-1 pr-1 pl-1 text-[12px] text-ink-2">
+              <FotoProducto id={p.producto_id} nombre={p.producto} size={22} className="rounded-full" />{p.producto}
               <button type="button" aria-label={`Quitar ${p.producto}`} onClick={() => onChange(valor.filter((x) => x.producto_id !== p.producto_id))} className="grid h-5 w-5 place-items-center rounded-full hover:bg-surface-hover"><X size={12} /></button>
             </span>
           ))}

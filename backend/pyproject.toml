@@ -19,6 +19,8 @@ dependencies = [
     "orjson>=3.10,<4",
     "typer>=0.12,<1",
     "python-dotenv>=1.0,<2",
+    # Fotos de producto: validar y convertir a WebP al importarlas (crm imagenes importar).
+    "pillow>=11,<14",
 ]
 
 [project.optional-dependencies]
